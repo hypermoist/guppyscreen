@@ -22,9 +22,6 @@
 
 #include "lvgl/lvgl.h"
 #include <android/log.h>
-#if LV_USE_TINY_TTF
-#include "src/extra/libs/tiny_ttf/lv_tiny_ttf.h"
-#endif
 
 #define NANOSVG_IMPLEMENTATION
 #include "third_party/nanosvg/nanosvg.h"
@@ -43,6 +40,7 @@
 #define MAX_PX 1024
 
 static int icon_px = 64;
+static int nav_px = 40;  // android_set_nav_icon_px
 
 typedef struct {
   const void *src;
@@ -55,7 +53,12 @@ static int n_entries, cap_entries;
 typedef struct {
   const char *svg;  // NUL-terminated
   size_t size;      // without the NUL
+  int nav;          // a nav bar icon: drawn at nav_px
 } grumpy_icon_src_t;
+
+static int px_of(const lv_img_dsc_t *dsc) {
+  return ((const grumpy_icon_src_t *)dsc->data)->nav ? nav_px : icon_px;
+}
 
 static uint8_t *render(const lv_img_dsc_t *dsc) {
   const grumpy_icon_src_t *src = (const grumpy_icon_src_t *)dsc->data;
@@ -67,7 +70,7 @@ static uint8_t *render(const lv_img_dsc_t *dsc) {
   free(text);
   if (!image) return NULL;
 
-  const int n = icon_px;
+  const int n = px_of(dsc);
   uint8_t *out = NULL;
   uint8_t *rgba = calloc((size_t)n * n, 4);
   NSVGrasterizer *rast = nsvgCreateRasterizer();
@@ -104,8 +107,8 @@ static lv_res_t icon_info(lv_img_decoder_t *decoder, const void *src, lv_img_hea
   if (!is_ours(src)) return LV_RES_INV;
   header->always_zero = 0;
   header->cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
-  header->w = icon_px;
-  header->h = icon_px;
+  header->w = px_of(src);
+  header->h = px_of(src);
   return LV_RES_OK;
 }
 
@@ -154,23 +157,7 @@ void grumpy_icons_init(int hor_res, int ver_res) {
   __android_log_print(ANDROID_LOG_INFO, "grumpyscreen", "icons at %dpx", icon_px);
 }
 
-/* The nav bar glyphs at any size (assets/materialdesign_nav.ttf); NULL when
- * the 40px bitmap font is big enough. */
-extern const uint8_t grumpy_nav_ttf[];
-extern const size_t grumpy_nav_ttf_size;
-
-const lv_font_t *android_icon_font(int px) {
-#if LV_USE_TINY_TTF
-  static lv_font_t *font;
-  static int font_px;
-  if (px <= 40) return NULL;
-  if (font && font_px == px) return font;
-  if (font) lv_tiny_ttf_destroy(font);
-  font = lv_tiny_ttf_create_data(grumpy_nav_ttf, grumpy_nav_ttf_size, px);
-  font_px = font ? px : 0;
-  return font;
-#else
-  LV_UNUSED(px);
-  return NULL;
-#endif
+/* The nav bar icons' size, before anything draws one (main_panel.cpp). */
+void android_set_nav_icon_px(int px) {
+  nav_px = px < 16 ? 16 : px > MAX_PX ? MAX_PX : px;
 }

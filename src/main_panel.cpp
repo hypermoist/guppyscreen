@@ -23,7 +23,7 @@ static int tab_bar_w() {
 #ifdef OS_ANDROID
   // phones and tablets are far denser than 800x480: past it the strip keeps
   // growing as the rest of the UI does (60px at 800x480), or its glyphs end up
-  // tiny. Their font follows the strip, see nav_icon_font.
+  // tiny. Their icons follow the strip, see nav_glyph_px.
   return std::clamp(scale_w(45), COMPACT_TAB_BAR_W, std::max(FULL_TAB_BAR_W, scale_r(36)));
 #else
   return std::clamp(scale_w(45), COMPACT_TAB_BAR_W, FULL_TAB_BAR_W);
@@ -33,12 +33,16 @@ static int tab_bar_w() {
 static int reclaimed_tab_bar_w() { return std::max(0, FULL_TAB_BAR_W - tab_bar_w()); }
 
 // The nav glyphs fill two thirds of the strip, as 40px does 60px.
-static const lv_font_t *nav_icon_font() {
+static int nav_glyph_px() { return std::max(40, tab_bar_w() * 2 / 3); }
+
 #ifdef OS_ANDROID
-  if (const lv_font_t *f = android_icon_font(tab_bar_w() * 2 / 3)) return f;
+// The app draws the nav icons from SVGs (android/app/src/main/cpp/icons),
+// sharp at whatever size the strip has grown to, rather than as glyphs.
+LV_IMG_DECLARE(nav_home);
+LV_IMG_DECLARE(nav_spool);
+LV_IMG_DECLARE(nav_console);
+LV_IMG_DECLARE(nav_tools);
 #endif
-  return &materialdesign_font_40;
-}
 
 #define TOOLS_SYMBOL   u8"\U000F1064"
 #define HOME_SYMBOL    u8"\U000F02DC"
@@ -253,26 +257,40 @@ static void scroll_begin_event(lv_event_t * e) {
   }
 }
 
-void MainPanel::_draw_spoolman_tab(lv_event_t *e) {
+// The image a tab button shows in place of its glyph, if any.
+const lv_img_dsc_t *MainPanel::tab_icon(uint16_t id) const {
+  auto is = [id](lv_obj_t *tab) { return tab != NULL && lv_obj_get_index(tab) == id; };
+  if (is(spoolman_tab)) return Icons::SPOOLMAN_IMG;
+#ifdef OS_ANDROID
+  if (is(main_tab)) return &nav_home;
+  if (is(mmu_tab)) return &nav_spool;
+  if (is(console_tab)) return &nav_console;
+  if (is(setting_tab)) return &nav_tools;
+#endif
+  return NULL;
+}
+
+void MainPanel::_draw_tab_icon(lv_event_t *e) {
   auto *self = static_cast<MainPanel*>(lv_event_get_user_data(e));
   auto *part = static_cast<lv_obj_draw_part_dsc_t*>(lv_event_get_param(e));
-  if (part->part != LV_PART_ITEMS || part->id != lv_obj_get_index(self->spoolman_tab)) return;
+  if (part->part != LV_PART_ITEMS) return;
+  const lv_img_dsc_t *icon = self->tab_icon(part->id);
+  if (icon == NULL || part->id >= std::size(self->tab_areas)) return;
   // LVGL changes draw_area to the label bounds before DRAW_PART_END.
   if (lv_event_get_code(e) == LV_EVENT_DRAW_PART_BEGIN) {
-    self->spoolman_tab_area = *part->draw_area;
-    // The icon font has no space glyph; hide the label's missing-glyph box.
+    self->tab_areas[part->id] = *part->draw_area;
+    // the image stands in for the label (and the icon font has no space
+    // glyph, which the spoolman tab's label is): hide it
     part->label_dsc->opa = LV_OPA_TRANSP;
     return;
   }
 
-  const auto &slot = self->spoolman_tab_area;
-  const auto *icon = Icons::SPOOLMAN_IMG;
+  const auto &slot = self->tab_areas[part->id];
   // the decoder's size, not the descriptor's: they differ for an encoded icon
   lv_img_header_t header;
   if (lv_img_decoder_get_info(icon, &header) != LV_RES_OK || header.w == 0 || header.h == 0) return;
-  // as big as the other tabs' glyphs (40px in a 60px strip)
-  const int glyph = std::max(40, tab_bar_w() * 2 / 3);
-  const int size = std::max(1, std::min({glyph, lv_area_get_width(&slot) - 2 * gap(),
+  // as big as the glyphs (40px in a 60px strip)
+  const int size = std::max(1, std::min({nav_glyph_px(), lv_area_get_width(&slot) - 2 * gap(),
                                       lv_area_get_height(&slot) - 2 * gap()}));
   const int zoom = size * LV_IMG_ZOOM_NONE / std::max<int>(header.w, header.h);
   const int width = header.w * zoom / LV_IMG_ZOOM_NONE;
@@ -339,7 +357,7 @@ void MainPanel::create_panel() {
   lv_obj_set_style_border_side(tab_btns, 0, LV_PART_ITEMS | LV_STATE_CHECKED);
   // on the items, not the bar: the shared key style sets a text font on the
   // items and would otherwise win over an inherited one
-  lv_obj_set_style_text_font(tab_btns, nav_icon_font(), LV_PART_ITEMS);
+  lv_obj_set_style_text_font(tab_btns, &materialdesign_font_40, LV_PART_ITEMS);
   // tab buttons are btnmatrix glyphs, not images, so they cannot wear icon_disabled;
   // grey them with the same colour it recolours disabled icons with
   lv_obj_set_style_text_color(tab_btns, col(DISABLED),
@@ -361,8 +379,17 @@ void MainPanel::create_panel() {
 
   if (spoolman_tab != NULL) {
     lv_btnmatrix_set_btn_ctrl(tab_btns, lv_obj_get_index(spoolman_tab), LV_BTNMATRIX_CTRL_DISABLED);
-    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_spoolman_tab, LV_EVENT_DRAW_PART_BEGIN, this);
-    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_spoolman_tab, LV_EVENT_DRAW_PART_END, this);
+  }
+#ifdef OS_ANDROID
+  // drawn at exactly the size the strip shows them at
+  android_set_nav_icon_px(nav_glyph_px());
+  const bool tab_icons = true;
+#else
+  const bool tab_icons = spoolman_tab != NULL;
+#endif
+  if (tab_icons) {
+    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_tab_icon, LV_EVENT_DRAW_PART_BEGIN, this);
+    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_tab_icon, LV_EVENT_DRAW_PART_END, this);
   }
 
   if (mmu_tab != NULL) {

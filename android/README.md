@@ -97,14 +97,17 @@ zooming those up only blurs them. The app instead embeds the icons' SVGs
 needs (64px at 800x480, 102px at 1600x720), so they stay sharp at any
 resolution. Editing an SVG there is all it takes to change an icon.
 
-nanosvg has no `<mask>` support, so `android/app/src/main/cpp/icons/` holds
-mask-free copies of the SVGs that use one (only `spoolman_img.svg`), which
-the build uses instead.
+`android/app/src/main/cpp/icons/` holds the app's own SVGs: the nav bar's
+(`nav_*.svg`, written from the Material Design Icons glyphs the other builds
+show by `android/tools/nav-icons.py`), which the strip draws at its size as
+it grows with the screen, and mask-free copies of any `assets/material_svg`
+icon nanosvg cannot draw because it uses `<mask>` (only `spoolman_img.svg`),
+which the build uses in their place.
 
-The nav bar grows the same way, and its glyphs are drawn at its size from
-`assets/materialdesign_nav.ttf` with LVGL's tiny_ttf;
-`assets/android-icons.sh` regenerates that font (needs `pyftsubset` from
-fonttools).
+## Measuring
+
+`android/tools/measure.sh [seconds]` prints the running app's RAM (PSS and
+native heap) and CPU use, idle and while switching nav tabs, over adb.
 
 ## Trying it without a printer
 

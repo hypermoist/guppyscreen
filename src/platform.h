@@ -13,9 +13,9 @@ void android_show_printer_picker();
 void android_restart_app();
 // Turns the backlight off (true) or back on, for the screen timeout.
 void android_set_display_sleep(bool sleeping);
-// The nav bar glyphs rasterised at px (android/app/src/main/cpp/grumpy_icons.c),
-// or NULL when materialdesign_font_40 is big enough.
-extern "C" const struct _lv_font_t *android_icon_font(int px);
+// The size to draw the nav bar's icons (nav_*) at, before any is drawn
+// (android/app/src/main/cpp/grumpy_icons.c).
+extern "C" void android_set_nav_icon_px(int px);
 #endif
 
 #endif // __GUPPY_PLATFORM_H__
