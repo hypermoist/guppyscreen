@@ -329,6 +329,11 @@ void GuppyScreen::new_theme_apply_cb(lv_theme_t *th, lv_obj_t *obj) {
     lv_obj_add_style(obj, &s.switch_knob, LV_PART_KNOB);
     lv_obj_add_style(obj, &s.track, LV_PART_INDICATOR);
     lv_obj_add_style(obj, &s.fill, LV_PART_INDICATOR | LV_STATE_CHECKED);
+#ifdef OS_ANDROID
+    // LVGL's default switch is a fixed 36x21px (from LV_DPI_DEF, not the
+    // screen), a speck on a phone; size it from the touch target instead
+    lv_obj_set_size(obj, Theme::touch_h() * 7 / 8, Theme::touch_h() / 2);
+#endif
   } else if (lv_obj_check_type(obj, &lv_slider_class) || lv_obj_check_type(obj, &lv_bar_class)) {
     lv_obj_add_style(obj, &s.groove, LV_PART_MAIN);
     lv_obj_add_style(obj, &s.fill, LV_PART_INDICATOR);
