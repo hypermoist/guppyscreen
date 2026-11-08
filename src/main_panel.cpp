@@ -7,6 +7,7 @@
 
 using namespace Theme;
 #include "icons.h"
+#include "platform.h"
 
 #include <algorithm>
 #include <string>
@@ -19,10 +20,25 @@ static constexpr int COMPACT_TAB_BAR_W = 45;
 // Keep the compact screen's nav strip narrow enough to leave more room for the
 // page. On larger displays it grows only as far as the established 60px width.
 static int tab_bar_w() {
+#ifdef OS_ANDROID
+  // phones and tablets are far denser than 800x480: past it the strip keeps
+  // growing as the rest of the UI does (60px at 800x480), or its glyphs end up
+  // tiny. Their font follows the strip, see nav_icon_font.
+  return std::clamp(scale_w(45), COMPACT_TAB_BAR_W, std::max(FULL_TAB_BAR_W, scale_r(36)));
+#else
   return std::clamp(scale_w(45), COMPACT_TAB_BAR_W, FULL_TAB_BAR_W);
+#endif
 }
 
-static int reclaimed_tab_bar_w() { return FULL_TAB_BAR_W - tab_bar_w(); }
+static int reclaimed_tab_bar_w() { return std::max(0, FULL_TAB_BAR_W - tab_bar_w()); }
+
+// The nav glyphs fill two thirds of the strip, as 40px does 60px.
+static const lv_font_t *nav_icon_font() {
+#ifdef OS_ANDROID
+  if (const lv_font_t *f = android_icon_font(tab_bar_w() * 2 / 3)) return f;
+#endif
+  return &materialdesign_font_40;
+}
 
 #define TOOLS_SYMBOL   u8"\U000F1064"
 #define HOME_SYMBOL    u8"\U000F02DC"
@@ -108,6 +124,8 @@ void MainPanel::set_klipper_ready(bool ready) {
   std::lock_guard<std::mutex> lock(lv_lock);
   klipper_ready = ready;
   console_panel.set_gcode_input_enabled(ready);
+  // gcode: actions in Settings depend on the macros this printer has
+  setting_panel.refresh_action_tiles();
 
   for (ButtonContainer *button : {&homing_btn, &extrude_btn, &action_btn,
                                   &led_btn, &print_btn, &emergency_btn}) {
@@ -249,16 +267,21 @@ void MainPanel::_draw_spoolman_tab(lv_event_t *e) {
 
   const auto &slot = self->spoolman_tab_area;
   const auto *icon = Icons::SPOOLMAN_IMG;
-  const int size = std::max(1, std::min({40, lv_area_get_width(&slot) - 2 * gap(),
+  // the decoder's size, not the descriptor's: they differ for an encoded icon
+  lv_img_header_t header;
+  if (lv_img_decoder_get_info(icon, &header) != LV_RES_OK || header.w == 0 || header.h == 0) return;
+  // as big as the other tabs' glyphs (40px in a 60px strip)
+  const int glyph = std::max(40, tab_bar_w() * 2 / 3);
+  const int size = std::max(1, std::min({glyph, lv_area_get_width(&slot) - 2 * gap(),
                                       lv_area_get_height(&slot) - 2 * gap()}));
-  const int zoom = size * LV_IMG_ZOOM_NONE / std::max(icon->header.w, icon->header.h);
-  const int width = icon->header.w * zoom / LV_IMG_ZOOM_NONE;
-  const int height = icon->header.h * zoom / LV_IMG_ZOOM_NONE;
+  const int zoom = size * LV_IMG_ZOOM_NONE / std::max<int>(header.w, header.h);
+  const int width = header.w * zoom / LV_IMG_ZOOM_NONE;
+  const int height = header.h * zoom / LV_IMG_ZOOM_NONE;
   lv_area_t area;
   area.x1 = slot.x1 + (lv_area_get_width(&slot) - width) / 2;
   area.y1 = slot.y1 + (lv_area_get_height(&slot) - height) / 2;
-  area.x2 = area.x1 + icon->header.w - 1;
-  area.y2 = area.y1 + icon->header.h - 1;
+  area.x2 = area.x1 + header.w - 1;
+  area.y2 = area.y1 + header.h - 1;
 
   lv_draw_img_dsc_t image;
   lv_draw_img_dsc_init(&image);
@@ -316,7 +339,7 @@ void MainPanel::create_panel() {
   lv_obj_set_style_border_side(tab_btns, 0, LV_PART_ITEMS | LV_STATE_CHECKED);
   // on the items, not the bar: the shared key style sets a text font on the
   // items and would otherwise win over an inherited one
-  lv_obj_set_style_text_font(tab_btns, &materialdesign_font_40, LV_PART_ITEMS);
+  lv_obj_set_style_text_font(tab_btns, nav_icon_font(), LV_PART_ITEMS);
   // tab buttons are btnmatrix glyphs, not images, so they cannot wear icon_disabled;
   // grey them with the same colour it recolours disabled icons with
   lv_obj_set_style_text_color(tab_btns, col(DISABLED),

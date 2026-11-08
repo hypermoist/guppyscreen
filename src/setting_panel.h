@@ -10,7 +10,9 @@
 #endif
 #include "lvgl/lvgl.h"
 
+#include <functional>
 #include <mutex>
+#include <string>
 
 class SettingPanel {
  public:
@@ -23,6 +25,9 @@ class SettingPanel {
   // Firmware restart is a Klipper RPC, so it only works while Moonraker is
   // connected to Klipper.
   void set_firmware_restart_available(bool available);
+  // Shows the action tiles that can run against the connected printer (a
+  // gcode: command needs its macro). Call with the LVGL lock held.
+  void refresh_action_tiles();
 
   void handle_callback(lv_event_t *event);
 
@@ -39,7 +44,11 @@ class SettingPanel {
   void refresh_emergency_stop_warning();
   void refresh_sleep_timeout_warning();
 
+  bool action_available(const char *key);
+  void run_action(const std::string &cmd, std::function<void(bool)> done);
+
   KWebSocketClient &ws;
+  std::mutex &lv_lock;
   bool owns_cont;
   lv_obj_t *cont;
   lv_obj_t *tabview;
@@ -70,6 +79,9 @@ class SettingPanel {
   ButtonContainer update_btn;
 #endif
   ButtonContainer shutdown_host_btn;
+#ifdef OS_ANDROID
+  ButtonContainer switch_printer_btn;
+#endif
 };
 
 #endif // __SETTING_PANEL_H__

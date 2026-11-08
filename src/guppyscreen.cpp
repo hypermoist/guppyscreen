@@ -2,8 +2,14 @@
 
 #include "config.h"
 #include "theme.h"
+#include "platform.h"
+// fbdev drives the display everywhere but the desktop and Android, which bring
+// their own window and decide for themselves when the screen goes dark
+#if !defined(GUPPY_SDL) && !defined(OS_ANDROID)
+#define GUPPY_FBDEV
 #include "lv_drivers/display/fbdev.h"
 #include "lv_drivers/indev/evdev.h"
+#endif
 #ifdef GUPPY_SDL
 #include "lv_drivers/sdl/sdl_common.h"
 #endif
@@ -84,7 +90,7 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
   lv_init();
 
   /*Linux frame buffer device init*/
-#ifndef GUPPY_SDL
+#ifdef GUPPY_FBDEV
   fbdev_init();
   fbdev_unblank();
 #endif
@@ -120,7 +126,8 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
 
   lv_obj_set_size(screen_saver, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_bg_opa(screen_saver, LV_OPA_100, 0);
-#ifdef GUPPY_SDL
+#ifndef GUPPY_FBDEV
+  // nothing blanks the panel here, so the screen saver itself has to be dark
   lv_obj_set_style_bg_color(screen_saver, lv_color_black(), 0);
 #endif
   lv_obj_move_background(screen_saver);
@@ -201,8 +208,11 @@ void GuppyScreen::loop() {
       if (effective_inactive > static_cast<uint32_t>(display_sleep)) {
         if (!is_sleeping.load()) {
           LOG_DEBUG("putting display to sleeping after {} ms effective inactivity", effective_inactive);
-#ifndef GUPPY_SDL
+#ifdef GUPPY_FBDEV
           fbdev_blank();
+#endif
+#ifdef OS_ANDROID
+          android_set_display_sleep(true);
 #endif
           lv_obj_move_foreground(screen_saver);
           is_sleeping = true;
@@ -210,8 +220,11 @@ void GuppyScreen::loop() {
       } else {
         if (is_sleeping.load()) {
           LOG_DEBUG("waking up display");
-#ifndef GUPPY_SDL
+#ifdef GUPPY_FBDEV
           fbdev_unblank();
+#endif
+#ifdef OS_ANDROID
+          android_set_display_sleep(false);
 #endif
           lv_obj_move_background(screen_saver);
           is_sleeping = false;
