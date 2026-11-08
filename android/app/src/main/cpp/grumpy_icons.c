@@ -4,38 +4,43 @@
  * The desktop and printer builds compile assets/material (64px) or
  * assets/material_46 bitmaps; a phone or tablet screen wants them two to
  * five times that, and zooming a 64px bitmap up only blurs it. Here every
- * icon is instead a 256px PNG (assets/material_png, embedded by
+ * icon is instead its SVG (assets/material_svg, embedded by
  * embed_assets.cmake) behind an LV_IMG_CF_USER_ENCODED_0 descriptor of the
  * same name whose data is a grumpy_icon_src_t, and this decoder hands LVGL
- * each one resampled once to the size the screen needs: the 64px the 800x480
- * layout was drawn for, scaled as the rest of the UI scales (Theme::scale_r).
- * Code that fits icons to their space only ever shrinks them, so they stay
- * sharp.
+ * each one drawn once, with nanosvg, at the size the screen needs: the 64px
+ * the 800x480 layout was drawn for, scaled as the rest of the UI scales
+ * (Theme::scale_r). Code that fits icons to their space only ever shrinks
+ * them, so they stay sharp.
  *
  * The icons are white masks recoloured by style, as the C arrays are, so
- * only the PNG's alpha is used.
+ * only the drawing's alpha is used.
  */
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "lvgl/lvgl.h"
 #include <android/log.h>
-#include "src/extra/libs/png/lodepng.h"
 #if LV_USE_TINY_TTF
 #include "src/extra/libs/tiny_ttf/lv_tiny_ttf.h"
 #endif
+
+#define NANOSVG_IMPLEMENTATION
+#include "third_party/nanosvg/nanosvg.h"
+#define NANOSVGRAST_IMPLEMENTATION
+#include "third_party/nanosvg/nanosvgrast.h"
 
 #if LV_COLOR_DEPTH != 32
 #error "grumpy_icons.c writes 32-bit pixels"
 #endif
 
-#define SOURCE_PX 256
 // the size the 64px assets were drawn for on an 800x480 screen, per scale_r
 // unit (scale_r: px * min(w / 480, h / 272); 800x480 gives 5/3)
 #define BASE_PX_PER_R (64.0 * 3 / 5)
-// never below the small screen's 46px set
+// never below the small screen's 46px set; LVGL's image header holds 11 bits
 #define MIN_PX 46
+#define MAX_PX 1024
 
 static int icon_px = 64;
 
@@ -44,61 +49,47 @@ typedef struct {
   uint8_t *px;
 } entry_t;
 static entry_t *entries;
+static int n_entries, cap_entries;
 
 // what an icon descriptor's data points at (embed_assets.cmake)
 typedef struct {
-  const uint8_t *png;
-  size_t size;
+  const char *svg;  // NUL-terminated
+  size_t size;      // without the NUL
 } grumpy_icon_src_t;
-static int n_entries, cap_entries;
-
-/* Box-filters n_in samples (stride in_step) down to n_out (stride out_step):
- * each output averages the source span it covers, partial pixels weighted. */
-static void resample(const float *in, int n_in, int in_step, float *out, int n_out, int out_step) {
-  const double scale = (double)n_in / n_out;
-  for (int i = 0; i < n_out; i++) {
-    const double a = i * scale, b = (i + 1) * scale;
-    double sum = 0;
-    for (int j = (int)a; j < n_in && j < b; j++) {
-      const double lo = j < a ? a : j, hi = j + 1 > b ? b : j + 1;
-      sum += in[j * in_step] * (hi - lo);
-    }
-    out[i * out_step] = (float)(sum / scale);
-  }
-}
 
 static uint8_t *render(const lv_img_dsc_t *dsc) {
-  unsigned char *rgba = NULL;
-  unsigned w = 0, h = 0;
   const grumpy_icon_src_t *src = (const grumpy_icon_src_t *)dsc->data;
-  if (lodepng_decode32(&rgba, &w, &h, src->png, src->size) != 0 || w == 0 || h == 0) {
-    if (rgba) lv_mem_free(rgba);
-    return NULL;
-  }
+  // nsvgParse writes into its input
+  char *text = malloc(src->size + 1);
+  if (!text) return NULL;
+  memcpy(text, src->svg, src->size + 1);
+  NSVGimage *image = nsvgParse(text, "px", 96);
+  free(text);
+  if (!image) return NULL;
+
   const int n = icon_px;
-  float *alpha = malloc(sizeof(float) * w * h);
-  float *rows = malloc(sizeof(float) * n * h);  // h rows of n
-  float *done = malloc(sizeof(float) * n * n);
-  uint8_t *out = malloc((size_t)n * n * LV_IMG_PX_SIZE_ALPHA_BYTE);
-  if (alpha && rows && done && out) {
-    for (unsigned i = 0; i < w * h; i++) alpha[i] = rgba[i * 4 + 3];
-    for (unsigned y = 0; y < h; y++) resample(alpha + y * w, w, 1, rows + y * n, n, 1);
-    for (int x = 0; x < n; x++) resample(rows + x, h, n, done + x, n, n);
+  uint8_t *out = NULL;
+  uint8_t *rgba = calloc((size_t)n * n, 4);
+  NSVGrasterizer *rast = nsvgCreateRasterizer();
+  if (rgba && rast && image->width > 0 && image->height > 0) {
+    // fit the drawing's box into n x n, centred, as rsvg-convert -w -h does
+    const float side = image->width > image->height ? image->width : image->height;
+    const float scale = n / side;
+    const float tx = (n - image->width * scale) / 2, ty = (n - image->height * scale) / 2;
+    nsvgRasterize(rast, image, tx, ty, scale, rgba, n, n, n * 4);
+    out = rgba;  // reused in place: RGBA in, white BGRA out
     for (int i = 0; i < n * n; i++) {
-      int a = (int)lroundf(done[i]);
+      const uint8_t a = rgba[i * 4 + 3];
       out[i * 4 + 0] = 0xff;  // b
       out[i * 4 + 1] = 0xff;  // g
       out[i * 4 + 2] = 0xff;  // r
-      out[i * 4 + 3] = (uint8_t)(a < 0 ? 0 : a > 255 ? 255 : a);
+      out[i * 4 + 3] = a;
     }
   } else {
-    free(out);
-    out = NULL;
+    free(rgba);
   }
-  free(alpha);
-  free(rows);
-  free(done);
-  lv_mem_free(rgba);
+  nsvgDeleteRasterizer(rast);
+  nsvgDelete(image);
   return out;
 }
 
@@ -155,7 +146,7 @@ static void icon_close(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc) {
 void grumpy_icons_init(int hor_res, int ver_res) {
   const double r = fmin(hor_res / 480.0, ver_res / 272.0);
   int px = (int)lround(BASE_PX_PER_R * r);
-  icon_px = px < MIN_PX ? MIN_PX : px > SOURCE_PX ? SOURCE_PX : px;
+  icon_px = px < MIN_PX ? MIN_PX : px > MAX_PX ? MAX_PX : px;
   lv_img_decoder_t *d = lv_img_decoder_create();
   lv_img_decoder_set_info_cb(d, icon_info);
   lv_img_decoder_set_open_cb(d, icon_open);

@@ -63,18 +63,21 @@ target_compile_definitions(wpa_client PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IFAC
 target_compile_options(wpa_client PRIVATE -w -UANDROID)
 
 # --- grumpyscreen ------------------------------------------------------------
-# Icons: instead of the fixed-size bitmaps in assets/material*, the 256px PNGs
-# in assets/material_png (assets/android-icons.sh), which grumpy_icons.c
-# resamples to the screen's size, and the nav bar glyphs as a TTF for tiny_ttf.
-set(ICON_PNG_DIR ${GRUMPY_ROOT}/assets/material_png)
+# Icons: instead of the fixed-size bitmaps in assets/material*, the SVGs in
+# assets/material_svg (icons/ overrides any nanosvg cannot draw as is), which
+# grumpy_icons.c draws at the screen's size, and the nav bar glyphs as a TTF
+# for tiny_ttf (assets/android-icons.sh).
+set(ICON_SVG_DIR ${GRUMPY_ROOT}/assets/material_svg)
+set(ICON_OVERRIDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/icons)
 set(NAV_TTF ${GRUMPY_ROOT}/assets/materialdesign_nav.ttf)
-file(GLOB ICON_PNGS ${ICON_PNG_DIR}/*.png)
+file(GLOB ICON_SVGS ${ICON_SVG_DIR}/*.svg ${ICON_OVERRIDE_DIR}/*.svg)
 set(ICONS_C ${CMAKE_CURRENT_BINARY_DIR}/grumpy_icons_data.c)
 add_custom_command(
     OUTPUT ${ICONS_C}
-    COMMAND ${CMAKE_COMMAND} -DPNG_DIR=${ICON_PNG_DIR} -DNAV_TTF=${NAV_TTF} -DOUT=${ICONS_C}
+    COMMAND ${CMAKE_COMMAND} -DSVG_DIR=${ICON_SVG_DIR} -DOVERRIDE_DIR=${ICON_OVERRIDE_DIR}
+            -DNAV_TTF=${NAV_TTF} -DOUT=${ICONS_C}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_assets.cmake
-    DEPENDS ${ICON_PNGS} ${NAV_TTF} ${CMAKE_CURRENT_SOURCE_DIR}/embed_assets.cmake
+    DEPENDS ${ICON_SVGS} ${NAV_TTF} ${CMAKE_CURRENT_SOURCE_DIR}/embed_assets.cmake
     COMMENT "Embedding icons")
 # nav glyphs at the nav bar's size (grumpy_icons.c)
 target_compile_definitions(lvgl PUBLIC LV_USE_TINY_TTF=1)

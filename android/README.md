@@ -91,14 +91,19 @@ Logs go to logcat: `adb logcat -s grumpyscreen`.
 
 Phone and tablet screens are two to five times as dense as the 800x480
 layout the 64px icon bitmaps (`assets/material`) were drawn for, and
-zooming those up only blurs them. The app instead embeds 256px PNGs of the
-same icons (`assets/material_png`) and resamples each one once to the size
-the screen needs (64px at 800x480, 102px at 1600x720), so they stay sharp.
-The nav bar grows the same way, and its glyphs are drawn at its size from
-`assets/materialdesign_nav.ttf` with LVGL's tiny_ttf.
+zooming those up only blurs them. The app instead embeds the icons' SVGs
+(`assets/material_svg`) and draws each one once, with
+[nanosvg](https://github.com/memononen/nanosvg), at the size the screen
+needs (64px at 800x480, 102px at 1600x720), so they stay sharp at any
+resolution. Editing an SVG there is all it takes to change an icon.
 
-After changing an icon in `assets/material_svg`, regenerate both with
-`assets/android-icons.sh` (needs `rsvg-convert` and `pyftsubset` from
+nanosvg has no `<mask>` support, so `android/app/src/main/cpp/icons/` holds
+mask-free copies of the SVGs that use one (only `spoolman_img.svg`), which
+the build uses instead.
+
+The nav bar grows the same way, and its glyphs are drawn at its size from
+`assets/materialdesign_nav.ttf` with LVGL's tiny_ttf;
+`assets/android-icons.sh` regenerates that font (needs `pyftsubset` from
 fonttools).
 
 ## Trying it without a printer
