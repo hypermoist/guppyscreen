@@ -100,9 +100,7 @@ resolution. Editing an SVG there is all it takes to change an icon.
 `android/app/src/main/cpp/icons/` holds the app's own SVGs: the nav bar's
 (`nav_*.svg`, written from the Material Design Icons glyphs the other builds
 show by `android/tools/nav-icons.py`), which the strip draws at its size as
-it grows with the screen, and mask-free copies of any `assets/material_svg`
-icon nanosvg cannot draw because it uses `<mask>` (only `spoolman_img.svg`),
-which the build uses in their place.
+it grows with the screen.
 
 ## Measuring
 

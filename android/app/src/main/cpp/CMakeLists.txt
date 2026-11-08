@@ -64,15 +64,15 @@ target_compile_options(wpa_client PRIVATE -w -UANDROID)
 
 # --- grumpyscreen ------------------------------------------------------------
 # Icons: instead of the fixed-size bitmaps in assets/material*, the SVGs in
-# assets/material_svg, which grumpy_icons.c draws at the screen's size. icons/
-# replaces any nanosvg cannot draw as is and adds the nav bar's own.
+# assets/material_svg, which grumpy_icons.c draws at the screen's size, plus
+# the app's own in icons/ (the nav bar's).
 set(ICON_SVG_DIR ${GRUMPY_ROOT}/assets/material_svg)
-set(ICON_OVERRIDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/icons)
-file(GLOB ICON_SVGS ${ICON_SVG_DIR}/*.svg ${ICON_OVERRIDE_DIR}/*.svg)
+set(ICON_APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/icons)
+file(GLOB ICON_SVGS ${ICON_SVG_DIR}/*.svg ${ICON_APP_DIR}/*.svg)
 set(ICONS_C ${CMAKE_CURRENT_BINARY_DIR}/grumpy_icons_data.c)
 add_custom_command(
     OUTPUT ${ICONS_C}
-    COMMAND ${CMAKE_COMMAND} -DSVG_DIR=${ICON_SVG_DIR} -DOVERRIDE_DIR=${ICON_OVERRIDE_DIR}
+    COMMAND ${CMAKE_COMMAND} -DSVG_DIR=${ICON_SVG_DIR} -DAPP_DIR=${ICON_APP_DIR}
             -DOUT=${ICONS_C}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_assets.cmake
     DEPENDS ${ICON_SVGS} ${CMAKE_CURRENT_SOURCE_DIR}/embed_assets.cmake
