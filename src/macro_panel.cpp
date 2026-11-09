@@ -4,6 +4,9 @@
 #include "logger.h"
 #include "numpad.h"
 #include "theme.h"
+#ifdef OS_ANDROID
+#include "utils.h"
+#endif
 
 #include <algorithm>
 #include <charconv>
@@ -94,23 +97,29 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
                                                         &MacroPanel::handle_click, this));
     gcodes.push_back(gcode);
     Macro macro;
-#ifdef OS_ANDROID
-    runnable.push_back(true);
-#endif
     if (parse_macro(gcode, macro)) {
       const bool unsupported = macro.unsupported_parameter_count;
       macros.push_back(std::move(macro));
       if (unsupported) {
         LOG_ERROR("Macro '{}' has more than the supported {} parameters", gcode, max_parameters);
         buttons.back()->disable();
-#ifdef OS_ANDROID
-        runnable.back() = false;
-#endif
       }
     } else {
       macros.emplace_back();
     }
   }
+
+#ifdef OS_ANDROID
+  // the printer's own macros join these once Klipper is ready
+  config_tiles = buttons.size();
+  for (auto &b : buttons) {
+    b->use_plain();
+    lv_obj_set_height(b->get_container(), scale_r(92));
+  }
+  layout();
+  manage_scroll(grid);
+  return;
+#endif
 
   if (buttons.empty()) {
     lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_COLUMN);
@@ -135,41 +144,60 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
 }
 
 #ifdef OS_ANDROID
-void MacroPanel::refresh_available(const nlohmann::json &commands) {
-  if (!commands.is_object() || buttons.empty()) return;  // unknown: leave the tiles as they are
-  // The app ships every Simple AF probe macro: show only the ones this
-  // printer can run, packed into the grid without holes
-  const size_t cols = 4;
-  size_t shown = 0;
-  for (size_t i = 0; i < buttons.size(); i++) {
-    // the command is the first word; Klipper's are case-insensitive and the
-    // help table lists them in upper case
-    std::string command = gcodes[i].substr(0, gcodes[i].find_first_of(" \t"));
-    std::transform(command.begin(), command.end(), command.begin(),
-                   [](unsigned char c) { return std::toupper(c); });
-    if (!commands.contains(command) || !runnable[i]) {
-      LOG_INFO("Macro '{}' hidden: the printer cannot run it", gcodes[i]);
-      buttons[i]->hide();
-      continue;
-    }
-    buttons[i]->show();
-    lv_obj_set_grid_cell(buttons[i]->get_container(), LV_GRID_ALIGN_STRETCH, shown % cols, 1,
-                         LV_GRID_ALIGN_STRETCH, shown / cols, 1);
-    shown++;
+void MacroPanel::set_printer_macros(const std::vector<std::string> &names) {
+  if (popup != nullptr) close_popup();  // its macro may be about to go
+  // drop the previous printer's tiles, keep the configured ones
+  while (buttons.size() > config_tiles) {
+    lv_obj_del(buttons.back()->get_container());
+    buttons.pop_back();
+    gcodes.pop_back();
+    macros.pop_back();
   }
-  row_dsc.assign(std::max<size_t>(1, (shown + cols - 1) / cols), LV_GRID_CONTENT);
+  auto command_of = [](const std::string &gcode) {
+    std::string c = gcode.substr(0, gcode.find_first_of(" \t"));
+    std::transform(c.begin(), c.end(), c.begin(), [](unsigned char ch) { return std::toupper(ch); });
+    return c;
+  };
+  std::vector<std::string> configured;
+  for (size_t i = 0; i < config_tiles; i++) configured.push_back(command_of(gcodes[i]));
+
+  for (const std::string &name : names) {
+    const std::string command = command_of(name);
+    if (std::find(configured.begin(), configured.end(), command) != configured.end()) continue;
+    buttons.push_back(std::make_unique<ButtonContainer>(grid, Icons::REFRESH_IMG,
+        KUtils::to_title(name).c_str(), &MacroPanel::handle_click, this));
+    buttons.back()->use_plain();
+    lv_obj_set_height(buttons.back()->get_container(), scale_r(92));
+    gcodes.push_back(command);
+    macros.emplace_back();  // run as is: no parameter popup
+  }
+  layout();
+}
+
+// Every tile in order, four across; a note when there are none.
+void MacroPanel::layout() {
+  const size_t cols = 4;
+  for (size_t i = 0; i < buttons.size(); i++) {
+    lv_obj_set_grid_cell(buttons[i]->get_container(), LV_GRID_ALIGN_STRETCH, i % cols, 1,
+                         LV_GRID_ALIGN_STRETCH, i / cols, 1);
+  }
+  row_dsc.assign(std::max<size_t>(1, (buttons.size() + cols - 1) / cols), LV_GRID_CONTENT);
   row_dsc.push_back(LV_GRID_TEMPLATE_LAST);
   lv_obj_set_grid_dsc_array(grid, grid_col_dsc, row_dsc.data());
-
-  if (shown == 0 && none_label == nullptr) {
+  if (buttons.empty() && none_label == nullptr) {
     none_label = lv_label_create(grid);
-    lv_label_set_text(none_label, "No macros for this printer");
+    lv_label_set_text(none_label, "No macros");
     lv_obj_set_grid_cell(none_label, LV_GRID_ALIGN_CENTER, 0, cols, LV_GRID_ALIGN_CENTER, 0, 1);
   }
   if (none_label != nullptr) {
-    if (shown == 0) lv_obj_clear_flag(none_label, LV_OBJ_FLAG_HIDDEN);
+    if (buttons.empty()) lv_obj_clear_flag(none_label, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(none_label, LV_OBJ_FLAG_HIDDEN);
   }
+  // scrollable only while the tiles overflow, which manage_scroll otherwise
+  // re-checks only when the grid's own size changes: without this a swipe
+  // over a long list lands as a tap on a tile
+  lv_obj_update_layout(grid);
+  refresh_scroll(grid);
 }
 #endif
 

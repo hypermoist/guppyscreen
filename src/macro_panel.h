@@ -5,9 +5,6 @@
 #include "lvgl/lvgl.h"
 #include "numpad.h"
 #include "platform.h"
-#ifdef OS_ANDROID
-#include "hv/json.hpp"
-#endif
 
 #include <functional>
 #include <memory>
@@ -19,9 +16,9 @@ class MacroPanel {
  public:
   MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)> send);
 #ifdef OS_ANDROID
-  // Shows only the tiles whose command the printer has: commands is
-  // printer.gcode.help's result (command -> help). Call with the LVGL lock held.
-  void refresh_available(const nlohmann::json &commands);
+  // The app's tiles are the printer's own macros (names from Moonraker),
+  // after any [macro] sections in the config. Call with the LVGL lock held.
+  void set_printer_macros(const std::vector<std::string> &names);
 #endif
 
  private:
@@ -61,8 +58,9 @@ class MacroPanel {
   std::vector<std::string> gcodes;
   std::vector<Macro> macros;
 #ifdef OS_ANDROID
-  std::vector<bool> runnable;  // false: more parameters than the popup handles
-  lv_obj_t *none_label = nullptr;  // when the printer can run none of them
+  void layout();
+  size_t config_tiles = 0;  // the first tiles, from [macro] sections
+  lv_obj_t *none_label = nullptr;
 #endif
   static constexpr size_t max_parameters = 5;
   lv_obj_t *popup = nullptr;

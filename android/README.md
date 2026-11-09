@@ -76,10 +76,11 @@ The screen timeout turns the backlight off, as on the printer.
 
 #### Macros
 
-The console's Macros tab shows Simple AF's grumpyscreen macros (the probe calibration
-tiles its installer writes for each probe, bundled as `macros.cfg`), plus any
-`[macro "..."]` sections of your own in the override. A tile whose command the
-connected printer does not have (`printer.gcode.help`) is hidden.
+The console's Macros tab lists the connected printer's own macros: every
+`[gcode_macro]` Moonraker reports, except the `_hidden` ones (as Mainsail and
+Fluidd list them), refreshed whenever Klipper becomes ready. A tile runs its
+macro as is. Any `[macro "..."]` sections in `grumpyscreen-override.cfg` come
+first, with their own names, icons and parameter popups.
 
 Logs go to logcat: `adb logcat -s grumpyscreen`.
 

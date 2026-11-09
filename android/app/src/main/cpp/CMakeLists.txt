@@ -75,7 +75,10 @@ list(REMOVE_ITEM GRUMPY_SRC
     # COSMOS only, as in the Makefile
     ${GRUMPY_ROOT}/src/update_manager_client.cpp)
 
-add_library(grumpyscreen SHARED ${GRUMPY_SRC} grumpy_android.cpp grumpy_icons.c ${ICONS_C})
+# the console log's mono face in the sizes a phone needs (android/tools/console-fonts.py)
+file(GLOB CONSOLE_FONTS ${CMAKE_CURRENT_SOURCE_DIR}/fonts/*.c)
+add_library(grumpyscreen SHARED ${GRUMPY_SRC} grumpy_android.cpp grumpy_icons.c ${ICONS_C}
+    ${CONSOLE_FONTS})
 
 target_include_directories(grumpyscreen PRIVATE
     # experimental/filesystem shim for the NDK's libc++

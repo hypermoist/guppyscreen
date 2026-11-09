@@ -182,12 +182,6 @@ bool load_config(const Paths &p) {
     LOG_ERROR("Failed to load {}", p.config);
     return false;
   }
-  // Simple AF's macro tiles (assets/macros.cfg, copied beside the config): the
-  // vendor layer the K1 loads from CONFIG_VENDOR_FILE.
-  const fs::path vendor = fs::path(p.config).parent_path() / "macros.cfg";
-  if (fs::exists(vendor) && !conf->load_vendor(vendor.string())) {
-    LOG_ERROR("Failed to load vendor config {}", vendor.string());
-  }
   // The printer to talk to, written by the app from what the user entered.
   // It is loaded as an override so it can only replace keys the bundled
   // config already has.
@@ -256,6 +250,31 @@ void android_restart_app() {
 
 void android_set_display_sleep(bool sleeping) {
   call_activity("setDisplaySleepFromNative", "(Z)V", static_cast<jboolean>(sleeping));
+}
+
+LV_FONT_DECLARE(dejavusans_mono_14);
+LV_FONT_DECLARE(console_mono_16);
+LV_FONT_DECLARE(console_mono_18);
+LV_FONT_DECLARE(console_mono_20);
+LV_FONT_DECLARE(console_mono_22);
+LV_FONT_DECLARE(console_mono_24);
+LV_FONT_DECLARE(console_mono_26);
+LV_FONT_DECLARE(console_mono_28);
+
+// As Theme::scale_font picks Montserrat: the first size at least the 14px the
+// log has at 800x480, scaled, up to the largest there is.
+const lv_font_t *android_console_font() {
+  static const struct { int size; const lv_font_t *font; } fonts[] = {
+    {16, &console_mono_16}, {18, &console_mono_18}, {20, &console_mono_20},
+    {22, &console_mono_22}, {24, &console_mono_24}, {26, &console_mono_26},
+    {28, &console_mono_28},
+  };
+  const int target = Theme::scale_r(14);
+  if (target <= 14) return &dejavusans_mono_14;
+  for (const auto &f : fonts) {
+    if (f.size >= target) return f.font;
+  }
+  return fonts[sizeof(fonts) / sizeof(fonts[0]) - 1].font;
 }
 
 extern "C" {

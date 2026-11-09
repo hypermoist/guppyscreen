@@ -38,7 +38,12 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   // entry. The mono face is the one fixed-width font compiled in and has no
   // scaled sizes, so it is the one unscaled font in the UI, worn by the log only.
   lv_obj_add_style(output, &styles().panel, 0);
+#ifdef OS_ANDROID
+  // a phone is far denser than 800x480: the app has the mono face in sizes
+  lv_obj_set_style_text_font(output, android_console_font(), 0);
+#else
   lv_obj_set_style_text_font(output, &dejavusans_mono_14, 0);
+#endif
   lv_obj_set_size(output, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_border_width(output, 0, LV_STATE_FOCUSED | LV_PART_CURSOR);
   // each line coloured by what it is (see colourize); the log's label reads the
@@ -125,13 +130,23 @@ void ConsolePanel::set_gcode_input_enabled(bool enabled) {
     lv_obj_clear_state(input, LV_STATE_DISABLED);
     lv_btnmatrix_clear_btn_ctrl(tab_btns, macro_tab_index, LV_BTNMATRIX_CTRL_DISABLED);
 #ifdef OS_ANDROID
-    // the app ships every Simple AF probe macro; show the ones this
-    // printer can run (Klipper's command list covers gcode_macros and
-    // built-in commands)
-    ws.send_jsonrpc("printer.gcode.help", [this](json &j) {
-      if (!j.contains("result")) return;
+    // the app's macro tiles are the printer's own [gcode_macro]s, less the
+    // _hidden ones (as Mainsail and Fluidd list them)
+    ws.send_jsonrpc("printer.objects.list", [this](json &j) {
+      const json objects = j.value("/result/objects"_json_pointer, json::array());
+      if (!objects.is_array()) return;
+      std::vector<std::string> names;
+      for (const auto &o : objects) {
+        if (!o.is_string()) continue;
+        const std::string obj = o.get<std::string>();
+        static const std::string prefix = "gcode_macro ";
+        if (obj.rfind(prefix, 0) != 0 || obj.size() == prefix.size()) continue;
+        const std::string name = obj.substr(prefix.size());
+        if (name[0] != '_') names.push_back(name);
+      }
+      std::sort(names.begin(), names.end());
       std::lock_guard<std::mutex> lock(lv_lock);
-      macro_panel->refresh_available(j["result"]);
+      macro_panel->set_printer_macros(names);
     });
 #endif
     return;
