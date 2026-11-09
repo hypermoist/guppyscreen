@@ -37,19 +37,13 @@ val androidConfig by tasks.registering {
     outputs.dir(generatedAssets)
     doLast {
         var inCommands = false
-        val lines = src.readLines().flatMap { line ->
+        val lines = src.readLines().map { line ->
             val t = line.trim()
             if (t.startsWith("[")) inCommands = t == "[commands]"
             if (inCommands && !t.startsWith("[") && !t.startsWith("#") && t.contains(":")) {
-                listOf(line.substringBefore(":").trim() + ":")
-            } else if (t == "[ui]") {
-                // The Macros tab (Simple AF's probe macros, macros.cfg) is off
-                // until [ui] show_macros: true in grumpyscreen-override.cfg.
-                listOf(line,
-                       "# true shows the console's Macros tab (Simple AF's probe macros)",
-                       "show_macros: false")
+                line.substringBefore(":").trim() + ":"
             } else {
-                listOf(line)
+                line
             }
         }
         val out = generatedAssets.get().asFile

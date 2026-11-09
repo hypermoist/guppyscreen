@@ -76,16 +76,7 @@ The screen timeout turns the backlight off, as on the printer.
 
 #### Macros
 
-The console's Macros tab is off in the app. To turn it on, add to
-`files/grumpyscreen-override.cfg` (the bundled `grumpyscreen.cfg` is rewritten
-on every launch):
-
-```
-[ui]
-show_macros: true
-```
-
-The tab then shows Simple AF's grumpyscreen macros (the probe calibration
+The console's Macros tab shows Simple AF's grumpyscreen macros (the probe calibration
 tiles its installer writes for each probe, bundled as `macros.cfg`), plus any
 `[macro "..."]` sections of your own in the override. A tile whose command the
 connected printer does not have (`printer.gcode.help`) is greyed out.
