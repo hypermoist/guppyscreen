@@ -125,8 +125,8 @@ void ConsolePanel::set_gcode_input_enabled(bool enabled) {
     lv_obj_clear_state(input, LV_STATE_DISABLED);
     lv_btnmatrix_clear_btn_ctrl(tab_btns, macro_tab_index, LV_BTNMATRIX_CTRL_DISABLED);
 #ifdef OS_ANDROID
-    // the app ships every Simple AF probe macro; grey out the ones this
-    // printer cannot run (Klipper's command list covers gcode_macros and
+    // the app ships every Simple AF probe macro; show the ones this
+    // printer can run (Klipper's command list covers gcode_macros and
     // built-in commands)
     ws.send_jsonrpc("printer.gcode.help", [this](json &j) {
       if (!j.contains("result")) return;

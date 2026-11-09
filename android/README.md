@@ -79,7 +79,7 @@ The screen timeout turns the backlight off, as on the printer.
 The console's Macros tab shows Simple AF's grumpyscreen macros (the probe calibration
 tiles its installer writes for each probe, bundled as `macros.cfg`), plus any
 `[macro "..."]` sections of your own in the override. A tile whose command the
-connected printer does not have (`printer.gcode.help`) is greyed out.
+connected printer does not have (`printer.gcode.help`) is hidden.
 
 Logs go to logcat: `adb logcat -s grumpyscreen`.
 

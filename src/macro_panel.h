@@ -19,7 +19,7 @@ class MacroPanel {
  public:
   MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)> send);
 #ifdef OS_ANDROID
-  // Disables the tiles whose command the printer does not have: commands is
+  // Shows only the tiles whose command the printer has: commands is
   // printer.gcode.help's result (command -> help). Call with the LVGL lock held.
   void refresh_available(const nlohmann::json &commands);
 #endif
@@ -62,6 +62,7 @@ class MacroPanel {
   std::vector<Macro> macros;
 #ifdef OS_ANDROID
   std::vector<bool> runnable;  // false: more parameters than the popup handles
+  lv_obj_t *none_label = nullptr;  // when the printer can run none of them
 #endif
   static constexpr size_t max_parameters = 5;
   lv_obj_t *popup = nullptr;
