@@ -42,9 +42,7 @@ class SettingPanel {
   void refresh_sleep_timeout_warning();
 
   KWebSocketClient &ws;
-#ifdef OS_ANDROID
   std::mutex &lv_lock;
-#endif
   bool owns_cont;
   lv_obj_t *cont;
   lv_obj_t *tabview;
