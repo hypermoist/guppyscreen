@@ -30,18 +30,20 @@ static int tab_bar_w() {
 #endif
 }
 
+#ifdef OS_ANDROID
 static int reclaimed_tab_bar_w() { return std::max(0, FULL_TAB_BAR_W - tab_bar_w()); }
 
 // The nav glyphs fill two thirds of the strip, as 40px does 60px.
 static int nav_glyph_px() { return std::max(40, tab_bar_w() * 2 / 3); }
 
-#ifdef OS_ANDROID
 // The app draws the nav icons from SVGs (android/app/src/main/cpp/icons),
 // sharp at whatever size the strip has grown to, rather than as glyphs.
 LV_IMG_DECLARE(nav_home);
 LV_IMG_DECLARE(nav_spool);
 LV_IMG_DECLARE(nav_console);
 LV_IMG_DECLARE(nav_tools);
+#else
+static int reclaimed_tab_bar_w() { return FULL_TAB_BAR_W - tab_bar_w(); }
 #endif
 
 #define TOOLS_SYMBOL   u8"\U000F1064"
@@ -128,8 +130,10 @@ void MainPanel::set_klipper_ready(bool ready) {
   std::lock_guard<std::mutex> lock(lv_lock);
   klipper_ready = ready;
   console_panel.set_gcode_input_enabled(ready);
+#ifdef OS_ANDROID
   // gcode: actions in Settings depend on the macros this printer has
   setting_panel.refresh_action_tiles();
+#endif
 
   for (ButtonContainer *button : {&homing_btn, &extrude_btn, &action_btn,
                                   &led_btn, &print_btn, &emergency_btn}) {
@@ -257,6 +261,7 @@ static void scroll_begin_event(lv_event_t * e) {
   }
 }
 
+#ifdef OS_ANDROID
 // The image a tab button shows in place of its glyph, if any.
 const lv_img_dsc_t *MainPanel::tab_icon(uint16_t id) const {
   auto is = [id](lv_obj_t *tab) { return tab != NULL && lv_obj_get_index(tab) == id; };
@@ -312,6 +317,44 @@ void MainPanel::_draw_tab_icon(lv_event_t *e) {
                           : lv_tabview_get_tab_act(self->tabview) == part->id ? theme_primary() : col(TEXT);
   lv_draw_img(part->draw_ctx, &image, &area, icon);
 }
+#else
+void MainPanel::_draw_spoolman_tab(lv_event_t *e) {
+  auto *self = static_cast<MainPanel*>(lv_event_get_user_data(e));
+  auto *part = static_cast<lv_obj_draw_part_dsc_t*>(lv_event_get_param(e));
+  if (part->part != LV_PART_ITEMS || part->id != lv_obj_get_index(self->spoolman_tab)) return;
+  // LVGL changes draw_area to the label bounds before DRAW_PART_END.
+  if (lv_event_get_code(e) == LV_EVENT_DRAW_PART_BEGIN) {
+    self->spoolman_tab_area = *part->draw_area;
+    // The icon font has no space glyph; hide the label's missing-glyph box.
+    part->label_dsc->opa = LV_OPA_TRANSP;
+    return;
+  }
+
+  const auto &slot = self->spoolman_tab_area;
+  const auto *icon = Icons::SPOOLMAN_IMG;
+  const int size = std::max(1, std::min({40, lv_area_get_width(&slot) - 2 * gap(),
+                                      lv_area_get_height(&slot) - 2 * gap()}));
+  const int zoom = size * LV_IMG_ZOOM_NONE / std::max(icon->header.w, icon->header.h);
+  const int width = icon->header.w * zoom / LV_IMG_ZOOM_NONE;
+  const int height = icon->header.h * zoom / LV_IMG_ZOOM_NONE;
+  lv_area_t area;
+  area.x1 = slot.x1 + (lv_area_get_width(&slot) - width) / 2;
+  area.y1 = slot.y1 + (lv_area_get_height(&slot) - height) / 2;
+  area.x2 = area.x1 + icon->header.w - 1;
+  area.y2 = area.y1 + icon->header.h - 1;
+
+  lv_draw_img_dsc_t image;
+  lv_draw_img_dsc_init(&image);
+  image.zoom = zoom;
+  image.pivot = {0, 0};
+  image.recolor_opa = LV_OPA_COVER;
+  const bool disabled = lv_btnmatrix_has_btn_ctrl(lv_event_get_target(e), part->id,
+                                                 LV_BTNMATRIX_CTRL_DISABLED);
+  image.recolor = disabled ? col(DISABLED)
+                          : lv_tabview_get_tab_act(self->tabview) == part->id ? theme_primary() : col(TEXT);
+  lv_draw_img(part->draw_ctx, &image, &area, icon);
+}
+#endif
 
 void MainPanel::_tabview_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
@@ -379,18 +422,17 @@ void MainPanel::create_panel() {
 
   if (spoolman_tab != NULL) {
     lv_btnmatrix_set_btn_ctrl(tab_btns, lv_obj_get_index(spoolman_tab), LV_BTNMATRIX_CTRL_DISABLED);
+#ifndef OS_ANDROID
+    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_spoolman_tab, LV_EVENT_DRAW_PART_BEGIN, this);
+    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_spoolman_tab, LV_EVENT_DRAW_PART_END, this);
+#endif
   }
 #ifdef OS_ANDROID
-  // drawn at exactly the size the strip shows them at
+  // every tab is an image, drawn at exactly the size the strip shows it at
   android_set_nav_icon_px(nav_glyph_px());
-  const bool tab_icons = true;
-#else
-  const bool tab_icons = spoolman_tab != NULL;
+  lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_tab_icon, LV_EVENT_DRAW_PART_BEGIN, this);
+  lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_tab_icon, LV_EVENT_DRAW_PART_END, this);
 #endif
-  if (tab_icons) {
-    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_tab_icon, LV_EVENT_DRAW_PART_BEGIN, this);
-    lv_obj_add_event_cb(tab_btns, &MainPanel::_draw_tab_icon, LV_EVENT_DRAW_PART_END, this);
-  }
 
   if (mmu_tab != NULL) {
     // greyed out until klipper confirms the configured backend is there

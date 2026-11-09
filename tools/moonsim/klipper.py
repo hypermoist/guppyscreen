@@ -19,7 +19,7 @@ from .state import STATE, GcodeError, console, respond_info
 ROOM = 24.0
 CONFIG = {}            # section -> typed settings; the object names, case kept
 MACROS = ["LOAD_FILAMENT", "UNLOAD_FILAMENT", "_GUPPYSCREEN_EXTRUDE", "_GUPPYSCREEN_RETRACT",
-          "_CLIENT_LINEAR_MOVE", "SUPPORT_ZIP"]
+          "_CLIENT_LINEAR_MOVE"]
 
 # grumpyscreen.cfg names these; --fans N / --leds N expose the first N
 FAN_IDS = ["fan", "fan_generic part", "fan_generic chamber", "output_pin fan0",
@@ -755,22 +755,6 @@ async def g_move(cmd):
         STATE["motion_report"].update(live_velocity=0.0, live_extruder_velocity=0.0)
         mark("motion_report")
     return dur
-
-
-@gcode("SUPPORT_ZIP")
-async def _support_zip(cmd):
-    # pellcorp's macro runs tools/support.sh, which zips logs and config into
-    # the config directory; the G-code only answers once that is done
-    import os, zipfile
-    if S.STATE["print_stats"]["state"] == "printing":
-        raise GcodeError("Not available while printing")
-    await respond_info("INFO: Generating support.zip, please wait...")
-    await asyncio.sleep(2)
-    config = os.path.join(S.ARGS.session_dir, "config")
-    os.makedirs(config, exist_ok=True)
-    with zipfile.ZipFile(os.path.join(config, "support.zip"), "w") as z:
-        z.writestr("support.log", "fake moonraker support zip\n")
-    await respond_info("Upload the support.zip to discord")
 
 
 @gcode("G4")

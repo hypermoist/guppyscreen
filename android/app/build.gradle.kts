@@ -28,11 +28,10 @@ val grumpyVersionCode: Int = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?
 // remote: the shell commands there run on the printer host and mean nothing
 // on a phone, so each becomes what Moonraker can do instead (gcode: or
 // moonraker:, see setting_panel.cpp), or empty, which hides its tile.
-// Switch to stock and factory reset are printer-side scripts with no
-// Moonraker equivalent; a user override can point them at a macro.
+// Support ZIP and factory reset are left out (a user override can still point
+// factory reset at a macro); the app has no Switch to Stock tile at all.
 val androidCommands = mapOf(
     "restart_klipper_cmd" to "moonraker:machine.services.restart {\"service\": \"klipper\"}",
-    "support_zip_cmd" to "gcode:SUPPORT_ZIP",
     "shutdown_host_cmd" to "moonraker:machine.shutdown",
 )
 val generatedAssets = layout.buildDirectory.dir("generated/grumpyAssets")
@@ -45,14 +44,20 @@ val androidConfig by tasks.registering {
     outputs.dir(generatedAssets)
     doLast {
         var inCommands = false
-        val lines = src.readLines().map { line ->
+        val lines = src.readLines().flatMap { line ->
             val t = line.trim()
             if (t.startsWith("[")) inCommands = t == "[commands]"
             if (inCommands && !t.startsWith("[") && !t.startsWith("#") && t.contains(":")) {
                 val key = line.substringBefore(":").trim()
-                "$key: " + (androidCommands[key] ?: "")
+                listOf("$key: " + (androidCommands[key] ?: ""))
+            } else if (t == "[ui]") {
+                // The Macros tab (Simple AF's probe macros, macros.cfg) is off
+                // until [ui] show_macros: true in grumpyscreen-override.cfg.
+                listOf(line,
+                       "# true shows the console's Macros tab (Simple AF's probe macros)",
+                       "show_macros: false")
             } else {
-                line
+                listOf(line)
             }
         }
         val out = generatedAssets.get().asFile

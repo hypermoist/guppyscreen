@@ -5,9 +5,12 @@
 #include "simple_dialog.h"
 #include "icons.h"
 #include "theme.h"
+#ifdef OS_ANDROID
 #include "state.h"
 
 #include <algorithm>
+#endif
+
 #include <experimental/filesystem>
 #include <vector>
 
@@ -43,13 +46,13 @@ static WifiPanelOptions embedded_wifi_options(lv_obj_t *parent) {
   return opts;
 }
 
-// A [commands] entry is a shell command run on this machine, or, prefixed,
-// something the printer does through Moonraker:
-//   gcode:SUPPORT_ZIP              a G-code script (the macro must exist)
+#ifdef OS_ANDROID
+// On a phone the [commands] are what the printer does through Moonraker
+// rather than shell commands on this machine (the app's grumpyscreen.cfg,
+// android/app/build.gradle.kts):
+//   gcode:SOME_MACRO               a G-code script (the macro must exist)
 //   moonraker:machine.shutdown     a Moonraker JSON-RPC method, optionally
 //   moonraker:machine.services.restart {"service": "klipper"}   with params
-// so a screen that is not on the printer host (Android, a remote Pi) can
-// still offer the action.
 struct Action {
   enum Kind { NONE, SHELL, GCODE, MOONRAKER } kind;
   std::string arg;     // the shell command, G-code, or method
@@ -90,6 +93,7 @@ static bool printer_has_macro(const std::string &script) {
   }
   return false;
 }
+#endif
 
 static int call_command(const std::string &cmd) {
     try {
@@ -170,7 +174,9 @@ static lv_obj_t *add_about_line(lv_obj_t *parent, const std::string &text, bool 
 
 SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   : ws(c)
+#ifdef OS_ANDROID
   , lv_lock(l)
+#endif
   , owns_cont(parent == nullptr)
   , cont(Theme::create_screen(parent))  // fills the tab: it is the page
   , tabview(lv_tabview_create(cont, LV_DIR_TOP, Theme::scale_r(36)))
@@ -201,8 +207,11 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
         "Firmware Restart", "Do you want to perform a firmware restart?", {"Back", "Firmware Restart"})
   , guppy_restart_btn(actions_cont, Icons::GUI_IMG, "Restart GUI", &SettingPanel::_handle_callback, this)
   , support_zip_btn(actions_cont, Icons::SUPPORT_ZIP_IMG, "Create\nSupport ZIP", &SettingPanel::_handle_callback, this)
+#ifndef OS_ANDROID
+  // a phone has no stock firmware to switch a printer to
   , switch_to_stock_btn(actions_cont, Icons::SWITCH_STOCK_IMG, SWITCH_TO_STOCK_BUTTON_TEXT, &SettingPanel::_handle_callback, this,
           SWITCH_TO_STOCK_BUTTON_TITLE, SWITCH_TO_STOCK_BUTTON_PROMPT, {"Back", "Switch to Stock"})
+#endif
   , factory_reset_btn(actions_cont, Icons::FACTORY_RESET_IMG, FACTORY_RESET_BUTTON_TEXT, &SettingPanel::_handle_callback, this,
 		  FACTORY_RESET_BUTTON_TITLE, FACTORY_RESET_BUTTON_PROMPT, {"Back", "Factory Reset"})
 #ifdef COSMOS
@@ -315,6 +324,7 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   lv_obj_set_style_text_color(sleep_timeout_warning, Theme::col(Theme::WARNING), 0);
   refresh_sleep_timeout_warning();
 
+#ifdef OS_ANDROID
   refresh_action_tiles();
 }
 
@@ -342,25 +352,14 @@ void SettingPanel::refresh_action_tiles() {
       o.tile->hide();
     }
   };
-#ifdef OS_ANDROID
   // the app can be pointed at any of several printers
   action_tiles.push_back(&switch_printer_btn);
-#endif
   offer({&restart_klipper_btn, "/commands/restart_klipper_cmd"});
   action_tiles.push_back(&restart_firmware_btn);
-#ifdef OS_ANDROID
   action_tiles.push_back(&guppy_restart_btn);  // restarts the app
-#else
-  offer({&guppy_restart_btn, "/commands/gui_restart_cmd"});
-#endif
   offer({&support_zip_btn, "/commands/support_zip_cmd"});
-  offer({&switch_to_stock_btn, "/commands/switch_to_stock_cmd"});
   offer({&factory_reset_btn, "/commands/factory_reset_cmd"});
-#ifdef COSMOS
-  action_tiles.push_back(&update_btn);
-#endif
   offer({&shutdown_host_btn, "/commands/shutdown_host_cmd"});
-
   layout_tiles(actions_cont, action_tiles);
 }
 
@@ -389,6 +388,32 @@ void SettingPanel::run_action(const std::string &cmd, std::function<void(bool)> 
       break;
   }
 }
+#else
+  // Optional tiles only appear with a command behind them; the grid is built
+  // from what is left, four across, so a hidden tile never leaves a hole.
+  auto has_cmd = [conf](const char *key) { return conf->get<std::string>(key) != ""; };
+  std::vector<ButtonContainer *> action_tiles = {
+      &restart_klipper_btn, &restart_firmware_btn, &guppy_restart_btn};
+  struct Optional { ButtonContainer *tile; const char *cmd; };
+  for (const Optional &o : {Optional{&support_zip_btn, "/commands/support_zip_cmd"}}) {
+    if (has_cmd(o.cmd)) action_tiles.push_back(o.tile); else o.tile->hide();
+  }
+  for (const Optional &o : {Optional{&switch_to_stock_btn, "/commands/switch_to_stock_cmd"},
+                            Optional{&factory_reset_btn, "/commands/factory_reset_cmd"}
+                            }) {
+    if (has_cmd(o.cmd)) action_tiles.push_back(o.tile); else o.tile->hide();
+  }
+#ifdef COSMOS
+  action_tiles.push_back(&update_btn);
+#endif
+
+  for (const Optional &o : {Optional{&shutdown_host_btn, "/commands/shutdown_host_cmd"}}) {
+    if (has_cmd(o.cmd)) action_tiles.push_back(o.tile); else o.tile->hide();
+  }
+
+  layout_tiles(actions_cont, action_tiles);
+}
+#endif
 
 SettingPanel::~SettingPanel() {
   if (owns_cont && cont != NULL) {
@@ -492,9 +517,17 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       lv_obj_t *btn = lv_event_get_current_target(event);
     if (btn == restart_klipper_btn.get_container()) {
       Config *conf = Config::get_instance();
+#ifdef OS_ANDROID
       run_action(conf->get<std::string>("/commands/restart_klipper_cmd"), [](bool ok) {
         if (!ok) create_simple_dialog(lv_scr_act(), "Restart Klipper Failed", "Failed to restart Klipper!", true, true);
       });
+      return;
+#endif
+      auto restart_command = conf->get<std::string>("/commands/restart_klipper_cmd");
+      auto ret = call_command(restart_command);
+      if (ret != 0) {
+        create_simple_dialog(lv_scr_act(), "Restart Klipper Failed", "Failed to restart Klipper!", true, true);
+      }
     } else if (btn == restart_firmware_btn.get_container()) {
       ws.send_jsonrpc("printer.firmware_restart");
     } else if (btn == guppy_restart_btn.get_container()) {
@@ -516,6 +549,7 @@ void SettingPanel::handle_callback(lv_event_t *event) {
     } else if (btn == shutdown_host_btn.get_container()) {
       Config *conf = Config::get_instance();
       auto shutdown_host_cmd = conf->get<std::string>("/commands/shutdown_host_cmd");
+#ifdef OS_ANDROID
       if (parse_action(shutdown_host_cmd).kind != Action::SHELL) {
         // the printer is going away and the connection with it; the
         // websocket disconnect takes the screen over from here
@@ -525,6 +559,7 @@ void SettingPanel::handle_callback(lv_event_t *event) {
         });
         return;
       }
+#endif
       lv_obj_t *mbox = create_simple_dialog(lv_scr_act(), "Shutdown Host Initiated", "Shutdown of host has been initiated", false, false);
       run_command_deferred(mbox, shutdown_host_cmd,
                            "Shutdown Host Failed", "Failed to shutdown host!",
@@ -533,50 +568,45 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       Config *conf = Config::get_instance();
       auto support_zip_cmd = conf->get<std::string>("/commands/support_zip_cmd");
       if (support_zip_cmd != "") {
-        // pressed until it is done; through Moonraker that is a reply later
         lv_obj_add_state(support_zip_btn.get_button(), LV_STATE_PRESSED);
-        lv_obj_add_state(support_zip_btn.get_container(), LV_STATE_DISABLED);
         lv_refr_now(NULL);
-        run_action(support_zip_cmd, [this](bool ok) {
-          lv_obj_clear_state(support_zip_btn.get_button(), LV_STATE_PRESSED);
-          lv_obj_clear_state(support_zip_btn.get_container(), LV_STATE_DISABLED);
-          if (ok) {
-            create_simple_dialog(lv_scr_act(), "Support ZIP Success", "The support.zip can be found in the config directory!", true, false);
-          } else {
-            create_simple_dialog(lv_scr_act(), "Support ZIP Failed", "Failed to generate a support zip!", true, true);
-          }
-        });
+        auto ret = call_command(support_zip_cmd);
+        lv_obj_clear_state(support_zip_btn.get_button(), LV_STATE_PRESSED);
+        if (ret == 0) {
+          create_simple_dialog(lv_scr_act(), "Support ZIP Success", "The support.zip can be found in the config directory!", true, false);
+        } else {
+          create_simple_dialog(lv_scr_act(), "Support ZIP Failed", "Failed to generate a support zip!", true, true);
+        }
       }
+#ifndef OS_ANDROID
     } else if (btn == switch_to_stock_btn.get_container()) {
       Config *conf = Config::get_instance();
       auto switch_to_stock_cmd = conf->get<std::string>("/commands/switch_to_stock_cmd");
-      if (parse_action(switch_to_stock_cmd).kind != Action::SHELL) {
-        create_simple_dialog(lv_scr_act(), SWITCH_TO_STOCK_BUTTON_TITLE " Initiated", SWITCH_TO_STOCK_BUTTON_SUCCESS, true, false);
-        run_action(switch_to_stock_cmd, [](bool ok) {
-          if (!ok) create_simple_dialog(lv_scr_act(), SWITCH_TO_STOCK_BUTTON_TITLE " Failed", SWITCH_TO_STOCK_BUTTON_FAILURE, true, true);
-        });
-        return;
-      }
       lv_obj_t *mbox = create_simple_dialog(lv_scr_act(), SWITCH_TO_STOCK_BUTTON_TITLE " Initiated", SWITCH_TO_STOCK_BUTTON_SUCCESS, false, false);
       run_command_deferred(mbox, switch_to_stock_cmd,
                            SWITCH_TO_STOCK_BUTTON_TITLE " Failed", SWITCH_TO_STOCK_BUTTON_FAILURE,
                            DEFERRED_COMMAND_DELAY_MS);
-#ifdef OS_ANDROID
+#else
     } else if (btn == switch_printer_btn.get_container()) {
       android_show_printer_picker();
 #endif
     } else if (btn == factory_reset_btn.get_container()) {
-      Config *conf = Config::get_instance();
-      auto cmd = conf->get<std::string>("/commands/factory_reset_cmd");
-      if (parse_action(cmd).kind != Action::SHELL) {
-        create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Initiated", FACTORY_RESET_BUTTON_SUCCESS, true, false);
-        run_action(cmd, [](bool ok) {
-          if (!ok) create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Failed", FACTORY_RESET_BUTTON_FAILURE, true, true);
-        });
-        return;
+#ifdef OS_ANDROID
+      {
+        auto cmd = Config::get_instance()->get<std::string>("/commands/factory_reset_cmd");
+        if (parse_action(cmd).kind != Action::SHELL) {
+          create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Initiated", FACTORY_RESET_BUTTON_SUCCESS, true, false);
+          run_action(cmd, [](bool ok) {
+            if (!ok) create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Failed", FACTORY_RESET_BUTTON_FAILURE, true, true);
+          });
+          return;
+        }
       }
+#endif
       lv_obj_t *mbox  = create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Initiated", FACTORY_RESET_BUTTON_SUCCESS, false, false);
 
+      Config *conf = Config::get_instance();
+      auto cmd = conf->get<std::string>("/commands/factory_reset_cmd");
       run_command_deferred(mbox, cmd,
                            FACTORY_RESET_BUTTON_TITLE " Failed", FACTORY_RESET_BUTTON_FAILURE,
                            FACTORY_RESET_DELAY_MS);

@@ -69,6 +69,8 @@ public class MainActivity extends Activity {
             // the bundled config is replaced on every start, so an app update
             // brings its new defaults; the user's changes live in the override
             copyAsset("grumpyscreen.cfg", configFile);
+            // Simple AF's macro tiles, loaded as the vendor config beside it
+            copyAsset("macros.cfg", new File(files, "macros.cfg"));
         } catch (IOException e) {
             Log.e(TAG, "unable to install grumpyscreen.cfg", e);
             Toast.makeText(this, "Unable to install grumpyscreen.cfg", Toast.LENGTH_LONG).show();

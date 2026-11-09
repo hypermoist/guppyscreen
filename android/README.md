@@ -64,12 +64,29 @@ Moonraker instead (see `[commands]` below):
 | Restart Klipper | init script | `machine.services.restart` |
 | Firmware Restart | Klipper RPC | same |
 | Restart GUI | restarts the service | restarts the app |
-| Create Support ZIP | `support.sh` | the printer's `SUPPORT_ZIP` macro (pellcorp installs have it); the tile only shows when the printer has it, and the zip lands in the printer's config directory as on the K1 |
+| Create Support ZIP | `support.sh` | not offered |
 | Shutdown Host | `/sbin/halt` | `machine.shutdown` |
-| Switch to Stock, Factory Reset | printer-side scripts | not offered: Moonraker cannot run them. Point the command at a macro in your override to get the tile |
+| Switch to Stock | printer-side script | not built: a phone has no stock firmware to switch to |
+| Factory Reset | printer-side script | not offered: Moonraker cannot run it. Point `factory_reset_cmd` at a macro in your override to get the tile |
 | Network tab | the printer's wifi | not offered: Android manages the device's wifi |
 
 The screen timeout turns the backlight off, as on the printer.
+
+#### Macros
+
+The console's Macros tab is off in the app. To turn it on, add to
+`files/grumpyscreen-override.cfg` (the bundled `grumpyscreen.cfg` is rewritten
+on every launch):
+
+```
+[ui]
+show_macros: true
+```
+
+The tab then shows Simple AF's grumpyscreen macros (the probe calibration
+tiles its installer writes for each probe, bundled as `macros.cfg`), plus any
+`[macro "..."]` sections of your own in the override. A tile whose command the
+connected printer does not have (`printer.gcode.help`) is greyed out.
 
 #### `[commands]` that run through Moonraker
 
@@ -77,13 +94,12 @@ Any `[commands]` entry, in any build, can be a shell command (as before) or
 one of these, which suits a screen that is not on the printer host:
 
 ```
-support_zip_cmd: gcode:SUPPORT_ZIP
 shutdown_host_cmd: moonraker:machine.shutdown
 restart_klipper_cmd: moonraker:machine.services.restart {"service": "klipper"}
 ```
 
 A `gcode:` tile appears only when the connected printer defines that macro.
-The Android build bundles exactly these.
+The Android build bundles the last two.
 
 Logs go to logcat: `adb logcat -s grumpyscreen`.
 

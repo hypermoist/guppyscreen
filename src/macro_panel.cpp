@@ -94,12 +94,18 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
                                                         &MacroPanel::handle_click, this));
     gcodes.push_back(gcode);
     Macro macro;
+#ifdef OS_ANDROID
+    runnable.push_back(true);
+#endif
     if (parse_macro(gcode, macro)) {
       const bool unsupported = macro.unsupported_parameter_count;
       macros.push_back(std::move(macro));
       if (unsupported) {
         LOG_ERROR("Macro '{}' has more than the supported {} parameters", gcode, max_parameters);
         buttons.back()->disable();
+#ifdef OS_ANDROID
+        runnable.back() = false;
+#endif
       }
     } else {
       macros.emplace_back();
@@ -127,6 +133,23 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
   }
   manage_scroll(grid);
 }
+
+#ifdef OS_ANDROID
+void MacroPanel::refresh_available(const nlohmann::json &commands) {
+  if (!commands.is_object()) return;  // unknown: leave the tiles as they are
+  for (size_t i = 0; i < buttons.size(); i++) {
+    // the command is the first word; Klipper's are case-insensitive and the
+    // help table lists them in upper case
+    std::string command = gcodes[i].substr(0, gcodes[i].find_first_of(" \t"));
+    std::transform(command.begin(), command.end(), command.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    const bool known = commands.contains(command);
+    if (!known) LOG_INFO("Macro '{}' disabled: the printer has no {}", gcodes[i], command);
+    if (known && runnable[i]) buttons[i]->enable();
+    else buttons[i]->disable();
+  }
+}
+#endif
 
 void MacroPanel::handle_click(lv_event_t *event) {
   MacroPanel *panel = (MacroPanel *)event->user_data;

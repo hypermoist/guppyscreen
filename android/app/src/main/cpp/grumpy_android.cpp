@@ -182,6 +182,12 @@ bool load_config(const Paths &p) {
     LOG_ERROR("Failed to load {}", p.config);
     return false;
   }
+  // Simple AF's macro tiles (assets/macros.cfg, copied beside the config): the
+  // vendor layer the K1 loads from CONFIG_VENDOR_FILE.
+  const fs::path vendor = fs::path(p.config).parent_path() / "macros.cfg";
+  if (fs::exists(vendor) && !conf->load_vendor(vendor.string())) {
+    LOG_ERROR("Failed to load vendor config {}", vendor.string());
+  }
   // The printer to talk to, written by the app from what the user entered.
   // It is loaded as an override so it can only replace keys the bundled
   // config already has.

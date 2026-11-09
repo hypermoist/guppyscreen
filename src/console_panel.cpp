@@ -88,6 +88,16 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   delete_btn.hide_label();
   lv_obj_set_size(delete_btn.get_container(), scale_r(34), scale_r(34));
 
+#ifdef OS_ANDROID
+  // the app's Macros tab is off until [ui] show_macros: true
+  if (!Config::get_instance()->get<bool>("/ui/show_macros", false)) {
+    lv_obj_set_size(tabview, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_pad_all(lv_obj_get_parent(console_cont), 0, 0);
+    style_embedded_tabview(tabview);
+    // one tab: no tab bar
+    lv_obj_add_flag(lv_tabview_get_tab_btns(tabview), LV_OBJ_FLAG_HIDDEN);
+  } else {
+#endif
   macro_tab = lv_tabview_add_tab(tabview, "Macros");
   lv_obj_set_size(tabview, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_pad_all(lv_obj_get_parent(console_cont), 0, 0);
@@ -98,6 +108,9 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
         lv_tabview_set_act(tabview, lv_obj_get_index(console_cont), LV_ANIM_OFF);
         this->send_gcode(gcode);
       });
+#ifdef OS_ANDROID
+  }
+#endif
 
   ws.register_method_callback("notify_gcode_response",
 			      "ConsolePanel",
@@ -119,11 +132,35 @@ void ConsolePanel::select_first_tab() {
 
 void ConsolePanel::set_gcode_input_enabled(bool enabled) {
   gcode_input_enabled = enabled;
+#ifdef OS_ANDROID
+  if (!macro_tab) {  // [ui] show_macros: false
+    if (enabled) {
+      lv_obj_clear_state(input, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(input, LV_STATE_DISABLED);
+      lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_height(lower_cont, LV_SIZE_CONTENT);
+      lv_obj_clear_state(input, LV_STATE_FOCUSED);
+      lv_indev_reset(NULL, input);
+    }
+    return;
+  }
+#endif
   const uint16_t macro_tab_index = lv_obj_get_index(macro_tab);
   lv_obj_t *tab_btns = lv_tabview_get_tab_btns(tabview);
   if (enabled) {
     lv_obj_clear_state(input, LV_STATE_DISABLED);
     lv_btnmatrix_clear_btn_ctrl(tab_btns, macro_tab_index, LV_BTNMATRIX_CTRL_DISABLED);
+#ifdef OS_ANDROID
+    // the app ships every Simple AF probe macro; grey out the ones this
+    // printer cannot run (Klipper's command list covers gcode_macros and
+    // built-in commands)
+    ws.send_jsonrpc("printer.gcode.help", [this](json &j) {
+      if (!j.contains("result")) return;
+      std::lock_guard<std::mutex> lock(lv_lock);
+      macro_panel->refresh_available(j["result"]);
+    });
+#endif
     return;
   }
 

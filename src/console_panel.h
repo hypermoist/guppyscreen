@@ -41,7 +41,11 @@ class ConsolePanel {
   // Console and Macros tabs
   lv_obj_t *tabview;
   lv_obj_t *console_cont;
+#ifdef OS_ANDROID
+  lv_obj_t *macro_tab = nullptr;  // null with [ui] show_macros: false
+#else
   lv_obj_t *macro_tab;
+#endif
   lv_obj_t *top_cont;
   lv_obj_t *output;
   lv_obj_t *lower_cont;   // the entry row and its keyboard

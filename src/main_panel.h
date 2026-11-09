@@ -101,8 +101,12 @@ class MainPanel : public NotifyConsumer {
  private:
   void create_main(lv_obj_t *parent);
   static void _tabview_event_cb(lv_event_t *e);
+#ifdef OS_ANDROID
   static void _draw_tab_icon(lv_event_t *e);
   const lv_img_dsc_t *tab_icon(uint16_t id) const;
+#else
+  static void _draw_spoolman_tab(lv_event_t *e);
+#endif
   KWebSocketClient &ws;
   HomingPanel homing_panel;
   FanPanel fan_panel;
@@ -113,7 +117,11 @@ class MainPanel : public NotifyConsumer {
   // its button stays disabled until the backend is detected
   lv_obj_t *mmu_tab;
   lv_obj_t *spoolman_tab;
+#ifdef OS_ANDROID
   lv_area_t tab_areas[8]{};  // per tab button, for _draw_tab_icon
+#else
+  lv_area_t spoolman_tab_area{};
+#endif
   lv_obj_t *console_tab;
   ConsolePanel console_panel;
   lv_obj_t *setting_tab;

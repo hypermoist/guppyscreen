@@ -103,11 +103,6 @@ target_compile_definitions(grumpyscreen PRIVATE
     MMU_BACKEND_HH
     GUPPYSCREEN_VERSION="${GUPPYSCREEN_VERSION}"
     GUPPYSCREEN_BRANCH="${GUPPYSCREEN_BRANCH}"
-    SWITCH_TO_STOCK_BUTTON_TEXT="Switch to\\nStock"
-    SWITCH_TO_STOCK_BUTTON_TITLE="Switch to Stock"
-    SWITCH_TO_STOCK_BUTTON_PROMPT="Are you sure you want to switch to stock?"
-    SWITCH_TO_STOCK_BUTTON_FAILURE="Failed to initiate switch to stock!"
-    SWITCH_TO_STOCK_BUTTON_SUCCESS="Please power cycle your printer!"
     FACTORY_RESET_BUTTON_TEXT="Factory\\nReset"
     FACTORY_RESET_BUTTON_TITLE="Factory Reset"
     FACTORY_RESET_BUTTON_PROMPT="Are you sure you want to factory reset?"

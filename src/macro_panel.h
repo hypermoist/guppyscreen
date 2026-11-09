@@ -4,6 +4,10 @@
 #include "button_container.h"
 #include "lvgl/lvgl.h"
 #include "numpad.h"
+#include "platform.h"
+#ifdef OS_ANDROID
+#include "hv/json.hpp"
+#endif
 
 #include <functional>
 #include <memory>
@@ -14,6 +18,11 @@
 class MacroPanel {
  public:
   MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)> send);
+#ifdef OS_ANDROID
+  // Disables the tiles whose command the printer does not have: commands is
+  // printer.gcode.help's result (command -> help). Call with the LVGL lock held.
+  void refresh_available(const nlohmann::json &commands);
+#endif
 
  private:
   struct Parameter {
@@ -51,6 +60,9 @@ class MacroPanel {
   std::vector<std::unique_ptr<ButtonContainer>> buttons;
   std::vector<std::string> gcodes;
   std::vector<Macro> macros;
+#ifdef OS_ANDROID
+  std::vector<bool> runnable;  // false: more parameters than the popup handles
+#endif
   static constexpr size_t max_parameters = 5;
   lv_obj_t *popup = nullptr;
   std::unique_ptr<Numpad> popup_numpad;
