@@ -37,6 +37,8 @@ key so it still installs.
 * **Settings → Tools → Switch Printer** (or Back) opens the printer list:
   every printer you have connected to is remembered by name, the search runs
   again, and tapping one switches to it (the app restarts itself).
+  Saved printers show whether they are online (each is asked for
+  Moonraker's `/server/info`); only the current one is connected.
   Long-press a saved printer to forget it. The same dialog can make the app
   the home screen, for a tablet dedicated to a printer. It is drawn with
   grumpyscreen's own `[theme]` colours and Montserrat, the UI's font.
@@ -55,20 +57,20 @@ key so it still installs.
 
 ### Compared with the printer (K1) screen
 
-The UI is the same code, so every panel is there. What differs is what the
-K1 does with shell commands on the printer itself; the app does those through
-Moonraker instead (see `[commands]` below):
+The UI is the same code, so every panel is there except the ones that act
+on the printer host itself, which are not compiled into the app. The Tools
+tab is always the same five tiles; the `[commands]` in grumpyscreen.cfg are
+not used.
 
 | Tools tile | K1 | Android |
 |---|---|---|
-| Restart Klipper | init script | `machine.services.restart` |
+| Switch Printer | - | the printer list |
+| Restart Klipper | Moonraker `machine.services.restart` | same |
 | Firmware Restart | Klipper RPC | same |
 | Restart GUI | restarts the service | restarts the app |
-| Create Support ZIP | `support.sh` | not offered |
-| Shutdown Host | `/sbin/halt` | `machine.shutdown` |
-| Switch to Stock | printer-side script | not built: a phone has no stock firmware to switch to |
-| Factory Reset | printer-side script | not offered: Moonraker cannot run it. Point `factory_reset_cmd` at a macro in your override to get the tile |
-| Network tab | the printer's wifi | not offered: Android manages the device's wifi |
+| Shutdown Host | `/sbin/halt` | Moonraker `machine.shutdown` |
+| Create Support ZIP, Switch to Stock, Factory Reset | printer-side scripts | not built |
+| Network tab | the printer's wifi | not built: Android manages the device's wifi |
 
 The screen timeout turns the backlight off, as on the printer.
 
@@ -87,19 +89,6 @@ The tab then shows Simple AF's grumpyscreen macros (the probe calibration
 tiles its installer writes for each probe, bundled as `macros.cfg`), plus any
 `[macro "..."]` sections of your own in the override. A tile whose command the
 connected printer does not have (`printer.gcode.help`) is greyed out.
-
-#### `[commands]` that run through Moonraker
-
-Any `[commands]` entry, in any build, can be a shell command (as before) or
-one of these, which suits a screen that is not on the printer host:
-
-```
-shutdown_host_cmd: moonraker:machine.shutdown
-restart_klipper_cmd: moonraker:machine.services.restart {"service": "klipper"}
-```
-
-A `gcode:` tile appears only when the connected printer defines that macro.
-The Android build bundles the last two.
 
 Logs go to logcat: `adb logcat -s grumpyscreen`.
 
