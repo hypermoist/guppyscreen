@@ -130,10 +130,6 @@ void MainPanel::set_klipper_ready(bool ready) {
   std::lock_guard<std::mutex> lock(lv_lock);
   klipper_ready = ready;
   console_panel.set_gcode_input_enabled(ready);
-#ifdef OS_ANDROID
-  // gcode: actions in Settings depend on the macros this printer has
-  setting_panel.refresh_action_tiles();
-#endif
 
   for (ButtonContainer *button : {&homing_btn, &extrude_btn, &action_btn,
                                   &led_btn, &print_btn, &emergency_btn}) {

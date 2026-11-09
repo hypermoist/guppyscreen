@@ -242,6 +242,7 @@ public class MainActivity extends Activity {
                             });
                     return true;
                 });
+                item.setTag(item.getText().toString());  // the label without a status
                 savedBox.addView(item);
                 savedRows.put(p.host + ":" + p.port, item);
                 if (current) item.performClick();
@@ -270,6 +271,29 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 if (scanner[0] != null) scanner[0].stop();
+                // Ask each saved printer directly whether it is up: the scan
+                // only sweeps this device's own subnet (and mDNS), so it
+                // misses printers elsewhere, or behind a forwarded port
+                for (PrinterScanner.Printer sp : savedList) {
+                    if (saved.isCurrent(sp)) continue;
+                    TextView item = savedRows.get(sp.host + ":" + sp.port);
+                    if (item == null) continue;
+                    item.setText(item.getTag() + "  \u2014 checking\u2026");
+                    new Thread(() -> {
+                        boolean up;
+                        try {
+                            String body = PrinterScanner.httpGet(sp.host, sp.port, "/server/info", 2000);
+                            up = body != null && new org.json.JSONObject(body).has("result");
+                        } catch (Exception e) {
+                            up = false;
+                        }
+                        final boolean online = up;
+                        runOnUiThread(() -> {
+                            if (savedRows.get(sp.host + ":" + sp.port) != item) return;  // removed
+                            item.setText(item.getTag() + (online ? "  \u2014 online" : "  \u2014 offline"));
+                        });
+                    }).start();
+                }
                 found.removeAllViews();
                 status.setText("Searching\u2026");
                 rescan.setEnabled(false);
@@ -279,9 +303,7 @@ public class MainActivity extends Activity {
                         TextView known = savedRows.get(p.host + ":" + p.port);
                         if (known != null) {
                             // already saved: just show that it is reachable
-                            if (!known.getText().toString().endsWith("online")) {
-                                known.setText(known.getText() + "  \u2014 online");
-                            }
+                            if (!saved.isCurrent(p)) known.setText(known.getTag() + "  \u2014 online");
                             if (p.name != null && saved.find(p.host, p.port) != null
                                     && saved.find(p.host, p.port).name == null) {
                                 saved.rename(p.host, p.port, p.name);

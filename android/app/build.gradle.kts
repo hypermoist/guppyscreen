@@ -24,16 +24,9 @@ val grumpyVersion: String = System.getenv("GUPPYSCREEN_VERSION") ?: git("rev-par
 val grumpyBranch: String = System.getenv("GUPPYSCREEN_BRANCH") ?: git("rev-parse", "--abbrev-ref", "HEAD") ?: "unknown"
 val grumpyVersionCode: Int = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
 
-// The bundled grumpyscreen.cfg is the printer one with its [commands] made
-// remote: the shell commands there run on the printer host and mean nothing
-// on a phone, so each becomes what Moonraker can do instead (gcode: or
-// moonraker:, see setting_panel.cpp), or empty, which hides its tile.
-// Support ZIP and factory reset are left out (a user override can still point
-// factory reset at a macro); the app has no Switch to Stock tile at all.
-val androidCommands = mapOf(
-    "restart_klipper_cmd" to "moonraker:machine.services.restart {\"service\": \"klipper\"}",
-    "shutdown_host_cmd" to "moonraker:machine.shutdown",
-)
+// The bundled grumpyscreen.cfg is the printer one with its [commands]
+// emptied: they are shell commands for the printer host, and the app's tools
+// (Settings > Tools) go through Moonraker instead.
 val generatedAssets = layout.buildDirectory.dir("generated/grumpyAssets")
 val androidConfig by tasks.registering {
     val src = grumpyRoot.resolve("grumpyscreen.cfg")
@@ -48,8 +41,7 @@ val androidConfig by tasks.registering {
             val t = line.trim()
             if (t.startsWith("[")) inCommands = t == "[commands]"
             if (inCommands && !t.startsWith("[") && !t.startsWith("#") && t.contains(":")) {
-                val key = line.substringBefore(":").trim()
-                listOf("$key: " + (androidCommands[key] ?: ""))
+                listOf(line.substringBefore(":").trim() + ":")
             } else if (t == "[ui]") {
                 // The Macros tab (Simple AF's probe macros, macros.cfg) is off
                 // until [ui] show_macros: true in grumpyscreen-override.cfg.
@@ -74,7 +66,7 @@ android {
 
     defaultConfig {
         applicationId = "io.github.pellcorp.grumpyscreen"
-        // getifaddrs (network info) needs API 24
+        // java.util.function and Map.getOrDefault need API 24
         minSdk = 24
         targetSdk = 35
         versionCode = grumpyVersionCode

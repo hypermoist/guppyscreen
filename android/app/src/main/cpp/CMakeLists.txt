@@ -48,20 +48,6 @@ file(GLOB_RECURSE LVGL_SRC ${GRUMPY_ROOT}/lvgl/src/*.c)
 add_library(lvgl STATIC ${LVGL_SRC})
 target_include_directories(lvgl PUBLIC ${GRUMPY_ROOT} ${GRUMPY_ROOT}/lvgl)
 
-# --- wpa_ctrl --------------------------------------------------------------
-# The wifi panel links against it; on Android the panel is never shown, but
-# compiling the client keeps the shared sources free of #ifdefs.
-set(WPA_DIR ${GRUMPY_ROOT}/wpa_supplicant/src)
-add_library(wpa_client STATIC
-    ${WPA_DIR}/common/wpa_ctrl.c
-    ${WPA_DIR}/utils/os_unix.c
-    ${WPA_DIR}/utils/common.c
-    ${WPA_DIR}/utils/wpa_debug.c)
-target_include_directories(wpa_client PUBLIC ${WPA_DIR} ${WPA_DIR}/utils ${WPA_DIR}/common)
-target_compile_definitions(wpa_client PRIVATE CONFIG_CTRL_IFACE CONFIG_CTRL_IFACE_UNIX)
-# ANDROID there means "built inside AOSP", with its private headers
-target_compile_options(wpa_client PRIVATE -w -UANDROID)
-
 # --- grumpyscreen ------------------------------------------------------------
 # Icons: instead of the fixed-size bitmaps in assets/material*, the SVGs in
 # assets/material_svg, which grumpy_icons.c draws at the screen's size, plus
@@ -83,6 +69,9 @@ file(GLOB GRUMPY_SRC
     ${GRUMPY_ROOT}/assets/*.c)
 list(REMOVE_ITEM GRUMPY_SRC
     ${GRUMPY_ROOT}/src/main.cpp
+    # Android manages the device's wifi: no Network tab, no wpa_supplicant
+    ${GRUMPY_ROOT}/src/wifi_panel.cpp
+    ${GRUMPY_ROOT}/src/wpa_event.cpp
     # COSMOS only, as in the Makefile
     ${GRUMPY_ROOT}/src/update_manager_client.cpp)
 
@@ -94,8 +83,7 @@ target_include_directories(grumpyscreen PRIVATE
     ${GRUMPY_ROOT}
     ${GRUMPY_ROOT}/src
     ${GRUMPY_ROOT}/fmt/include
-    ${LIBHV_COPY}/include
-    ${WPA_DIR}/common)
+    ${LIBHV_COPY}/include)
 
 target_compile_definitions(grumpyscreen PRIVATE
     _GNU_SOURCE
@@ -119,7 +107,6 @@ target_compile_options(grumpyscreen PRIVATE
 target_link_libraries(grumpyscreen
     lvgl
     hv_static
-    wpa_client
     android
     log
     m)

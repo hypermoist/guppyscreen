@@ -3,7 +3,9 @@
 
 #include "platform.h"
 #include "button_container.h"
+#ifndef OS_ANDROID
 #include "wifi_panel.h"
+#endif
 #include "websocket_client.h"
 #ifdef COSMOS
 #include "update_manager_client.h"
@@ -11,10 +13,6 @@
 #include "lvgl/lvgl.h"
 
 #include <mutex>
-#ifdef OS_ANDROID
-#include <functional>
-#include <string>
-#endif
 
 class SettingPanel {
  public:
@@ -27,11 +25,6 @@ class SettingPanel {
   // Firmware restart is a Klipper RPC, so it only works while Moonraker is
   // connected to Klipper.
   void set_firmware_restart_available(bool available);
-#ifdef OS_ANDROID
-  // Shows the action tiles that can run against the connected printer (a
-  // gcode: command needs its macro). Call with the LVGL lock held.
-  void refresh_action_tiles();
-#endif
 
   void handle_callback(lv_event_t *event);
 
@@ -48,11 +41,6 @@ class SettingPanel {
   void refresh_emergency_stop_warning();
   void refresh_sleep_timeout_warning();
 
-#ifdef OS_ANDROID
-  bool action_available(const char *key);
-  void run_action(const std::string &cmd, std::function<void(bool)> done);
-#endif
-
   KWebSocketClient &ws;
 #ifdef OS_ANDROID
   std::mutex &lv_lock;
@@ -61,7 +49,9 @@ class SettingPanel {
   lv_obj_t *cont;
   lv_obj_t *tabview;
   lv_obj_t *actions_tab;
-  lv_obj_t *wifi_tab;
+#ifndef OS_ANDROID
+  lv_obj_t *wifi_tab;  // Android leaves the device's wifi to Android
+#endif
   lv_obj_t *settings_tab;
   lv_obj_t *about_tab;
   lv_obj_t *actions_cont;
@@ -75,16 +65,18 @@ class SettingPanel {
   UpdateManagerClient update_manager;
 #endif
 
+#ifndef OS_ANDROID
   WifiPanel wifi_panel;
+#endif
 
   ButtonContainer restart_klipper_btn;
   ButtonContainer restart_firmware_btn;
   ButtonContainer guppy_restart_btn;
-  ButtonContainer support_zip_btn;
 #ifndef OS_ANDROID
+  ButtonContainer support_zip_btn;
   ButtonContainer switch_to_stock_btn;
-#endif
   ButtonContainer factory_reset_btn;
+#endif
 #ifdef COSMOS
   ButtonContainer update_btn;
 #endif

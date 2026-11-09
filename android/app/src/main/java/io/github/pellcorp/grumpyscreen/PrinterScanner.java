@@ -180,8 +180,13 @@ final class PrinterScanner {
      * HttpURLConnection by default, and printers on a LAN are plain HTTP.
      */
     static String httpGet(String host, int port, String path) {
+        return httpGet(host, port, path, CONNECT_TIMEOUT_MS);
+    }
+
+    /** As above, with a longer wait for one known host than a sweep can afford. */
+    static String httpGet(String host, int port, String path, int connectTimeoutMs) {
         try (Socket s = new Socket()) {
-            s.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+            s.connect(new InetSocketAddress(host, port), connectTimeoutMs);
             s.setSoTimeout(READ_TIMEOUT_MS);
             OutputStream out = s.getOutputStream();
             out.write(("GET " + path + " HTTP/1.0\r\nHost: " + host + ":" + port

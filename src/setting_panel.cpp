@@ -5,11 +5,6 @@
 #include "simple_dialog.h"
 #include "icons.h"
 #include "theme.h"
-#ifdef OS_ANDROID
-#include "state.h"
-
-#include <algorithm>
-#endif
 
 #include <experimental/filesystem>
 #include <vector>
@@ -39,59 +34,12 @@ static int display_sleep_index(int32_t seconds) {
   return -1;
 }
 
+#ifndef OS_ANDROID
 static WifiPanelOptions embedded_wifi_options(lv_obj_t *parent) {
   WifiPanelOptions opts;
   opts.parent = parent;
   opts.flush = true;
   return opts;
-}
-
-#ifdef OS_ANDROID
-// On a phone the [commands] are what the printer does through Moonraker
-// rather than shell commands on this machine (the app's grumpyscreen.cfg,
-// android/app/build.gradle.kts):
-//   gcode:SOME_MACRO               a G-code script (the macro must exist)
-//   moonraker:machine.shutdown     a Moonraker JSON-RPC method, optionally
-//   moonraker:machine.services.restart {"service": "klipper"}   with params
-struct Action {
-  enum Kind { NONE, SHELL, GCODE, MOONRAKER } kind;
-  std::string arg;     // the shell command, G-code, or method
-  json params;         // moonraker: only
-};
-
-static Action parse_action(const std::string &cmd) {
-  if (cmd.empty()) return {Action::NONE, "", json::object()};
-  if (cmd.rfind("gcode:", 0) == 0) return {Action::GCODE, cmd.substr(6), json::object()};
-  if (cmd.rfind("moonraker:", 0) == 0) {
-    std::string rest = cmd.substr(10);
-    const size_t sp = rest.find(' ');
-    json params = json::object();
-    if (sp != std::string::npos) {
-      params = json::parse(rest.substr(sp + 1), nullptr, false);
-      if (params.is_discarded() || !params.is_object()) {
-        LOG_ERROR("Ignoring invalid params in command '{}'", cmd);
-        params = json::object();
-      }
-      rest = rest.substr(0, sp);
-    }
-    return {Action::MOONRAKER, rest, params};
-  }
-  return {Action::SHELL, cmd, json::object()};
-}
-
-// Whether the connected printer defines the macro a gcode: action calls.
-static bool printer_has_macro(const std::string &script) {
-  std::string name = script.substr(0, script.find_first_of(" \t\n"));
-  std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-  json &objs = State::get_instance()->get_data("/printer_objs/objects"_json_pointer);
-  if (!objs.is_array()) return false;
-  for (const auto &o : objs) {
-    if (!o.is_string()) continue;
-    std::string obj = o.get<std::string>();
-    std::transform(obj.begin(), obj.end(), obj.begin(), ::tolower);
-    if (obj == "gcode_macro " + name) return true;
-  }
-  return false;
 }
 #endif
 
@@ -154,14 +102,6 @@ static void layout_tiles(lv_obj_t *cont, const std::vector<ButtonContainer *> &t
   }
 }
 
-#ifdef OS_ANDROID
-static lv_obj_t *hidden_container(lv_obj_t *parent) {
-  lv_obj_t *obj = lv_obj_create(parent);
-  lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-  return obj;
-}
-#endif
-
 static lv_obj_t *add_about_line(lv_obj_t *parent, const std::string &text, bool title = false) {
   lv_obj_t *label = lv_label_create(parent);
   lv_label_set_text(label, text.c_str());
@@ -181,11 +121,8 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   , cont(Theme::create_screen(parent))  // fills the tab: it is the page
   , tabview(lv_tabview_create(cont, LV_DIR_TOP, Theme::scale_r(36)))
   , actions_tab(lv_tabview_add_tab(tabview, "Tools"))
-#ifdef OS_ANDROID
-  // Android owns the device's wifi and there is no wpa_supplicant to talk
-  // to: no Network tab, the panel lives in a container that is never shown
-  , wifi_tab(hidden_container(cont))
-#else
+#ifndef OS_ANDROID
+  // (Android manages the device's wifi itself: no Network tab there)
   , wifi_tab(lv_tabview_add_tab(tabview, "Network"))
 #endif
   , settings_tab(lv_tabview_add_tab(tabview, "Settings"))
@@ -200,20 +137,23 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
 #ifdef COSMOS
   , update_manager(c, l)
 #endif
+#ifndef OS_ANDROID
   , wifi_panel(l, embedded_wifi_options(wifi_tab))
+#endif
   , restart_klipper_btn(actions_cont, Icons::RESTART_IMG, "Restart\nKlipper", &SettingPanel::_handle_callback, this,
         "Restart Klipper", "Do you want to restart klipper?", {"Back", "Restart Klipper"})
   , restart_firmware_btn(actions_cont, Icons::FIRMWARE_IMG, "Firmware\nRestart", &SettingPanel::_handle_callback, this,
         "Firmware Restart", "Do you want to perform a firmware restart?", {"Back", "Firmware Restart"})
   , guppy_restart_btn(actions_cont, Icons::GUI_IMG, "Restart GUI", &SettingPanel::_handle_callback, this)
-  , support_zip_btn(actions_cont, Icons::SUPPORT_ZIP_IMG, "Create\nSupport ZIP", &SettingPanel::_handle_callback, this)
 #ifndef OS_ANDROID
-  // a phone has no stock firmware to switch a printer to
+  // The app has no use for the printer-side tools: it cannot zip the
+  // printer's logs, and a phone has no stock firmware to switch a printer to
+  , support_zip_btn(actions_cont, Icons::SUPPORT_ZIP_IMG, "Create\nSupport ZIP", &SettingPanel::_handle_callback, this)
   , switch_to_stock_btn(actions_cont, Icons::SWITCH_STOCK_IMG, SWITCH_TO_STOCK_BUTTON_TEXT, &SettingPanel::_handle_callback, this,
           SWITCH_TO_STOCK_BUTTON_TITLE, SWITCH_TO_STOCK_BUTTON_PROMPT, {"Back", "Switch to Stock"})
-#endif
   , factory_reset_btn(actions_cont, Icons::FACTORY_RESET_IMG, FACTORY_RESET_BUTTON_TEXT, &SettingPanel::_handle_callback, this,
 		  FACTORY_RESET_BUTTON_TITLE, FACTORY_RESET_BUTTON_PROMPT, {"Back", "Factory Reset"})
+#endif
 #ifdef COSMOS
   // no prompt of its own: the update manager client checks for an update
   // first and asks only when there is one to install
@@ -234,7 +174,9 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   lv_obj_add_event_cb(tabview, &SettingPanel::_tabview_event_cb,
                       LV_EVENT_VALUE_CHANGED, this);
   lv_obj_set_style_pad_all(actions_tab, 0, 0);
+#ifndef OS_ANDROID
   lv_obj_set_style_pad_all(wifi_tab, 0, 0);
+#endif
   lv_obj_set_style_pad_all(settings_tab, 0, 0);
   lv_obj_set_style_pad_all(about_tab, 0, 0);
   Theme::style_embedded_tabview(tabview);
@@ -325,69 +267,10 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   refresh_sleep_timeout_warning();
 
 #ifdef OS_ANDROID
-  refresh_action_tiles();
-}
-
-bool SettingPanel::action_available(const char *key) {
-  const Action a = parse_action(Config::get_instance()->get<std::string>(key));
-  switch (a.kind) {
-    case Action::NONE: return false;
-    case Action::GCODE: return printer_has_macro(a.arg);
-    default: return true;
-  }
-}
-
-void SettingPanel::refresh_action_tiles() {
-  // Optional tiles only appear with a command behind them that can run here;
-  // the grid is built from what is left, four across, so a hidden tile never
-  // leaves a hole. A gcode: command depends on the printer's macros, so this
-  // runs again whenever Klipper (re)connects.
-  struct Optional { ButtonContainer *tile; const char *cmd; };
-  std::vector<ButtonContainer *> action_tiles;
-  auto offer = [&](const Optional &o) {
-    if (action_available(o.cmd)) {
-      o.tile->show();
-      action_tiles.push_back(o.tile);
-    } else {
-      o.tile->hide();
-    }
-  };
-  // the app can be pointed at any of several printers
-  action_tiles.push_back(&switch_printer_btn);
-  offer({&restart_klipper_btn, "/commands/restart_klipper_cmd"});
-  action_tiles.push_back(&restart_firmware_btn);
-  action_tiles.push_back(&guppy_restart_btn);  // restarts the app
-  offer({&support_zip_btn, "/commands/support_zip_cmd"});
-  offer({&factory_reset_btn, "/commands/factory_reset_cmd"});
-  offer({&shutdown_host_btn, "/commands/shutdown_host_cmd"});
-  layout_tiles(actions_cont, action_tiles);
-}
-
-// Runs a command that blocks (shell) or answers later (Moonraker). done gets
-// whether it worked, on the UI thread with the LVGL lock held.
-void SettingPanel::run_action(const std::string &cmd, std::function<void(bool)> done) {
-  const Action a = parse_action(cmd);
-  auto reply = [this, done](json &r) {
-    const bool ok = !r.contains("error");
-    if (!ok) LOG_ERROR("command failed: {}", r["error"].dump());
-    std::lock_guard<std::mutex> lock(lv_lock);
-    done(ok);
-  };
-  switch (a.kind) {
-    case Action::NONE:
-      done(false);
-      break;
-    case Action::SHELL:
-      done(call_command(a.arg) == 0);
-      break;
-    case Action::GCODE:
-      ws.send_jsonrpc("printer.gcode.script", json{{"script", a.arg}}, reply);
-      break;
-    case Action::MOONRAKER:
-      ws.send_jsonrpc(a.arg, a.params, reply);
-      break;
-  }
-}
+  // The app's tools are the same everywhere: it can be pointed at any of
+  // several printers, and the rest go through Moonraker
+  layout_tiles(actions_cont, {&switch_printer_btn, &restart_klipper_btn, &restart_firmware_btn,
+                              &guppy_restart_btn, &shutdown_host_btn});
 #else
   // Optional tiles only appear with a command behind them; the grid is built
   // from what is left, four across, so a hidden tile never leaves a hole.
@@ -412,8 +295,8 @@ void SettingPanel::run_action(const std::string &cmd, std::function<void(bool)> 
   }
 
   layout_tiles(actions_cont, action_tiles);
-}
 #endif
+}
 
 SettingPanel::~SettingPanel() {
   if (owns_cont && cont != NULL) {
@@ -503,13 +386,12 @@ void SettingPanel::refresh_emergency_stop_warning() {
 }
 
 void SettingPanel::refresh_active_tab() {
-#ifdef OS_ANDROID
-  return;  // no Network tab
-#endif
+#ifndef OS_ANDROID
   const uint16_t idx = lv_tabview_get_tab_act(tabview);
   if (idx == lv_obj_get_index(wifi_tab)) {
     wifi_panel.foreground();
   }
+#endif
 }
 
 void SettingPanel::handle_callback(lv_event_t *event) {
@@ -517,12 +399,6 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       lv_obj_t *btn = lv_event_get_current_target(event);
     if (btn == restart_klipper_btn.get_container()) {
       Config *conf = Config::get_instance();
-#ifdef OS_ANDROID
-      run_action(conf->get<std::string>("/commands/restart_klipper_cmd"), [](bool ok) {
-        if (!ok) create_simple_dialog(lv_scr_act(), "Restart Klipper Failed", "Failed to restart Klipper!", true, true);
-      });
-      return;
-#endif
       auto restart_command = conf->get<std::string>("/commands/restart_klipper_cmd");
       auto ret = call_command(restart_command);
       if (ret != 0) {
@@ -550,20 +426,17 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       Config *conf = Config::get_instance();
       auto shutdown_host_cmd = conf->get<std::string>("/commands/shutdown_host_cmd");
 #ifdef OS_ANDROID
-      if (parse_action(shutdown_host_cmd).kind != Action::SHELL) {
-        // the printer is going away and the connection with it; the
-        // websocket disconnect takes the screen over from here
-        create_simple_dialog(lv_scr_act(), "Shutdown Host Initiated", "Shutdown of host has been initiated", true, false);
-        run_action(shutdown_host_cmd, [](bool ok) {
-          if (!ok) create_simple_dialog(lv_scr_act(), "Shutdown Host Failed", "Failed to shutdown host!", true, true);
-        });
-        return;
-      }
+      // the printer goes away and the connection with it; the websocket
+      // disconnect takes the screen over from here
+      create_simple_dialog(lv_scr_act(), "Shutdown Host Initiated", "Shutdown of host has been initiated", true, false);
+      ws.send_jsonrpc("machine.shutdown");
+      return;
 #endif
       lv_obj_t *mbox = create_simple_dialog(lv_scr_act(), "Shutdown Host Initiated", "Shutdown of host has been initiated", false, false);
       run_command_deferred(mbox, shutdown_host_cmd,
                            "Shutdown Host Failed", "Failed to shutdown host!",
                            DEFERRED_COMMAND_DELAY_MS);
+#ifndef OS_ANDROID
     } else if (btn == support_zip_btn.get_container()) {
       Config *conf = Config::get_instance();
       auto support_zip_cmd = conf->get<std::string>("/commands/support_zip_cmd");
@@ -578,7 +451,6 @@ void SettingPanel::handle_callback(lv_event_t *event) {
           create_simple_dialog(lv_scr_act(), "Support ZIP Failed", "Failed to generate a support zip!", true, true);
         }
       }
-#ifndef OS_ANDROID
     } else if (btn == switch_to_stock_btn.get_container()) {
       Config *conf = Config::get_instance();
       auto switch_to_stock_cmd = conf->get<std::string>("/commands/switch_to_stock_cmd");
@@ -586,23 +458,7 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       run_command_deferred(mbox, switch_to_stock_cmd,
                            SWITCH_TO_STOCK_BUTTON_TITLE " Failed", SWITCH_TO_STOCK_BUTTON_FAILURE,
                            DEFERRED_COMMAND_DELAY_MS);
-#else
-    } else if (btn == switch_printer_btn.get_container()) {
-      android_show_printer_picker();
-#endif
     } else if (btn == factory_reset_btn.get_container()) {
-#ifdef OS_ANDROID
-      {
-        auto cmd = Config::get_instance()->get<std::string>("/commands/factory_reset_cmd");
-        if (parse_action(cmd).kind != Action::SHELL) {
-          create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Initiated", FACTORY_RESET_BUTTON_SUCCESS, true, false);
-          run_action(cmd, [](bool ok) {
-            if (!ok) create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Failed", FACTORY_RESET_BUTTON_FAILURE, true, true);
-          });
-          return;
-        }
-      }
-#endif
       lv_obj_t *mbox  = create_simple_dialog(lv_scr_act(), FACTORY_RESET_BUTTON_TITLE " Initiated", FACTORY_RESET_BUTTON_SUCCESS, false, false);
 
       Config *conf = Config::get_instance();
@@ -610,6 +466,10 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       run_command_deferred(mbox, cmd,
                            FACTORY_RESET_BUTTON_TITLE " Failed", FACTORY_RESET_BUTTON_FAILURE,
                            FACTORY_RESET_DELAY_MS);
+#else
+    } else if (btn == switch_printer_btn.get_container()) {
+      android_show_printer_picker();
+#endif
     }
   }
 }
